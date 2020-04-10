@@ -1,9 +1,12 @@
 const objerve = require('./' + require('./package.json').main)
 const test = require('tape')
 
-const callLog = () => {
+const callLog = (userF) => {
   const calls = []
-  const f = function () { calls.push(Array.from(arguments)) }
+  const f = function () {
+    if (userF) { userF(...arguments) }
+    calls.push(Array.from(arguments))
+  }
   return { f, calls }
 }
 
@@ -237,5 +240,57 @@ test('addListener called from a listener for same path', (t) => {
   t.deepEqual(calls, [
     ['create', ['a'], 1, undefined]
   ])
+  t.end()
+})
+
+test('adding listener for same level relative path inside listener', (t) => {
+  const obj = objerve({})
+
+  const {calls: callsBefore, f: fBefore} = callLog()
+  const {calls: callsAfter, f: fAfter} = callLog()
+
+  const {calls, f} = callLog((action, path) => {
+    if (action === 'delete') {
+      objerve.removeListener(
+        obj,
+        path.slice(0, -1).concat(['before']), // [parent].before,
+        fBefore)
+      objerve.removeListener(
+        obj,
+        path.slice(0, -1).concat(['after']), // [parent].after,
+        fAfter)
+    } else {
+      objerve.addListener(
+        obj,
+        path.slice(0, -1).concat(['before']), // [parent].before,
+        fBefore)
+      objerve.addListener(
+        obj,
+        path.slice(0, -1).concat(['after']), // [parent].after,
+        fAfter)
+    }
+  })
+
+  objerve.addListener(obj, ['a', 'main'], f)
+
+  obj.a = {before: 1, main: 2, after: 3}
+  delete obj.a
+
+  t.deepEqual(calls, [
+    ['create', ['a', 'main'], 2, undefined],
+    ['delete', ['a', 'main'], undefined, 2],
+  ])
+  // For creation, the obj.a.before listener wasn't called, because it only
+  // came into existence when obj.a = {...} fired obj.a.main's listener.  For
+  // deletion, obj.a.before's listener had already been called by the time that
+  // obj.a.main's listener removed it, because it's earlier in iteration order.
+  t.deepEqual(callsBefore, [
+    ['delete', ['a', 'before'], undefined, 1],
+  ])
+  // For creation, the obj.a.after listener wasn't called, because it only came
+  // into existence when obj.a = {...} fired obj.a.main's listener.  For
+  // deletion, obj.a.after's listener also wasn't called, because obj.a.main's
+  // listener was called first, which removed it.
+  t.deepEqual(callsAfter, [])
   t.end()
 })
