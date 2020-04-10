@@ -59,9 +59,9 @@ const listenersForRoot = new WeakMap()
 
 const callListeners = (root, action, path, oldValue, newValue) => {
   debug({root, action, path, oldValue, newValue})
-  const listeners = listenersForRoot.get(root)
-  if (listeners.has(path)) {
-    for (const listener of listeners.get(path)) {
+  const pathListeners = listenersForRoot.get(root)
+  if (pathListeners.has(path)) {
+    for (const listener of pathListeners.get(path)) {
       listener(action, path, newValue, oldValue)
     }
   }
