@@ -12,7 +12,7 @@ const objerve = require('./main.js')
 
 const obj = objerve()
 
-objerve.addListener(obj, ['a', 'b'], (action, path, newValue, oldValue) => {
+objerve.addListener(obj, ['a', 'b'], (newValue, oldValue, action, path, obj) => {
   console.log(`${action} ${path.join('.')}: `+
     `${JSON.stringify(oldValue)} -> ${JSON.stringify(newValue)}`)
 })

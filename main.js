@@ -62,7 +62,7 @@ const callListeners = (root, action, path, oldValue, newValue) => {
   const pathListeners = listenersForRoot.get(root)
   if (pathListeners.has(path)) {
     for (const listener of pathListeners.get(path)) {
-      listener(action, path, newValue, oldValue)
+      listener(newValue, oldValue, action, path, root)
     }
   }
 }
