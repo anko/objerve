@@ -164,7 +164,7 @@ const updateBefore = (root, action, path, oldValue, newValue) => {
 
   } else if (!oldIsPrimitive && newIsPrimitive) {
     debug([ path, oldValue, "object -> primitive", newValue])
-    // Object being overwritten with a primitive value.  Call listenrs for
+    // Object being overwritten with a primitive value.  Call listeners for
     // every relevant path in the old object.
     const pathListeners = listenersForRoot.get(root)
 
