@@ -13,20 +13,40 @@ const proxy = (obj, rootArg, path=[]) => {
 
   let root
 
+  // If we are proxying an Array, and the contents change, our 'set' handler
+  // will get called first with all the content 'set's, and finally with a
+  // 'length' set.
+  //
+  // This means when we try to handle the 'length' set, we cannot directly
+  // access the previous 'length' value in 'o.length', because the array
+  // contents have already changed, so 'o.length' is just the same value as
+  // it's now being set to!
+  //
+  // We solve this by storing the length ourselves of any Array we see, and
+  // using that as the 'oldValue' next time a length 'set' comes along.
+  const arrayLengthCache = new WeakMap()
+
   const node = new Proxy(obj, {
     set: (o, key, value) => {
       let localPath = path.concat([key])
       value = proxy(value, root, localPath)
       let actionName = key in o ? 'change' : 'create'
-      const oldValue = o[key]
+      let oldValue = o[key]
 
-      if ((o instanceof Array) && key === 'length') {
-        // Call listeners for any now truncated values.
-        for (let i = value; i < oldValue; ++i) {
-          const indexPath = localPath.slice(0, -1).concat([String(i)])
-          const args = [root, 'delete', indexPath, o[i], undefined]
-          updateBefore(...args)
+      if (o instanceof Array) {
+        if (key === 'length') {
+          // Call listeners for any values that got truncated.
+          for (let i = value; i < oldValue; ++i) {
+            const indexPath = localPath.slice(0, -1).concat([String(i)])
+            const args = [root, 'delete', indexPath, o[i], undefined]
+            updateBefore(...args)
+            o.length = value
+          }
+          // Use the old array length value from the cache.
+          oldValue = arrayLengthCache.get(o)
         }
+        // Update length cache entry.
+        arrayLengthCache.set(o, o.length)
       }
 
       const args = [root, actionName, localPath, oldValue, value]
@@ -192,8 +212,8 @@ const updateBefore = (root, action, path, oldValue, newValue) => {
     for (const {listenerPath, propertyPath} of whereIsIt) {
       const pathRelative = propertyPath.slice(path.length)
       callListeners(root, action, listenerPath, propertyPath,
-        getPath(root, propertyPath),
-        getPath(newValue, pathRelative))
+        oldValue,
+        newValue)
     }
 
   } else if (oldIsPrimitive && !newIsPrimitive) {
