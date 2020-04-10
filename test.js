@@ -294,3 +294,25 @@ test('adding listener for same level relative path inside listener', (t) => {
   t.deepEqual(callsAfter, [])
   t.end()
 })
+
+test('property with undefined as value', (t) => {
+  const obj = objerve({})
+
+  const {calls, f} = callLog()
+
+  // Add a listener that adds the other listener to it
+  objerve.addListener(obj, ['a'], f)
+
+  obj.a = undefined
+  obj.a = undefined
+  delete obj.a
+
+  // The action argument can be used to distinguish between 'undefined' being
+  // assigned as a value and just being there because the property was deleted.
+  t.deepEqual(calls, [
+    ['create', ['a'], undefined, undefined],
+    ['change', ['a'], undefined, undefined],
+    ['delete', ['a'], undefined, undefined],
+  ])
+  t.end()
+})
