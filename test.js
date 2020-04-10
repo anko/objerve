@@ -200,3 +200,42 @@ test('removeListener', (t) => {
   ])
   t.end()
 })
+
+test('removeListener called from a listener for same path listener', (t) => {
+  const obj = objerve({})
+
+  const {calls, f} = callLog()
+
+  // First add a listener that removes the other listener
+  objerve.addListener(obj, ['a'], (action, path) => {
+    objerve.removeListener(obj, path, f)
+  })
+
+  // Add the original listener after it
+  objerve.addListener(obj, ['a'], f)
+
+  obj.a = 1
+
+  // It's gone before it's called!
+  t.deepEqual(calls, [])
+  t.end()
+})
+
+test('addListener called from a listener for same path', (t) => {
+  const obj = objerve({})
+
+  const {calls, f} = callLog()
+
+  // Add a listener that adds the other listener to it
+  objerve.addListener(obj, ['a'], (action, path) => {
+    objerve.addListener(obj, path, f)
+  })
+
+  obj.a = 1
+
+  // It gets called!
+  t.deepEqual(calls, [
+    ['create', ['a'], 1, undefined]
+  ])
+  t.end()
+})

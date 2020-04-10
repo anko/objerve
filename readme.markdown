@@ -51,8 +51,11 @@ called in root→leaf order for created or changed properties, and in leaf→roo
 order for deletions.  This lets your callbacks setup and teardown state with
 correct nesting.
 
-If you have multiple callbacks for the same path, they might be called in any
-order; don't rely on it.
+Multiple callbacks for the same path are called in insertion order.
+
+Works inside listener callbacks.  If you add a listener for the same path
+inside a callback for that path, the new listener will also be called with the
+same change.
 
 ## `objerve.removeListener(obj, path, callback)`
 
@@ -61,6 +64,10 @@ The path is useful to disambiguate in case the same callback function is being
 used as the listener for multiple paths.
 
 Does nothing if it cannot find such a listener.
+
+Works inside listener callbacks.  If you remove a listener for the same path
+inside a callback for that path, the removed listener won't be called for that
+change either (unless it was already called before you).
 
 # use-cases
 
