@@ -316,3 +316,84 @@ test('property with undefined as value', (t) => {
   ])
   t.end()
 })
+
+test('[each]', (t) => {
+  const obj = objerve()
+
+  const {calls, f} = callLog()
+
+  // objerve.each matches any array index
+  objerve.addListener(obj, ['a', objerve.each], f)
+
+  obj.a = ['zero']
+  obj.a = ['zero', 'one']
+  obj.a = ['one']
+
+  t.deepEqual(calls, [
+    ['zero', undefined, 'create', ['a', '0'], obj],
+    ['one', undefined, 'create', ['a', '1'], obj],
+    ['one', 'zero', 'change', ['a', '0'], obj],
+    [undefined, 'one', 'delete', ['a', '1'], obj],
+  ])
+  t.end()
+})
+
+test('[each] -> something else', (t) => {
+  const obj = objerve()
+
+  const {calls, f} = callLog()
+
+  objerve.addListener(obj, ['a', objerve.each, 'x'], f)
+
+  obj.a = [{x: 'hi'}]
+  obj.a.push({x: 'hello'})
+
+  t.deepEqual(calls, [
+    ['hi', undefined, 'create', ['a', '0', 'x'], obj],
+    ['hello', undefined, 'create', ['a', '1', 'x'], obj],
+  ])
+  t.end()
+})
+
+test('bare [each]', (t) => {
+  const obj = objerve([])
+
+  const {calls, f} = callLog()
+
+  objerve.addListener(obj, [objerve.each], f)
+
+  obj.push('hi')
+  obj.push('hi')
+  obj.length = 1 // Truncate off one of them
+
+  t.deepEqual(calls, [
+    ['hi', undefined, 'create', ['0'], obj],
+    ['hi', undefined, 'create', ['1'], obj],
+    [undefined, 'hi', 'delete', ['1'], obj],
+  ])
+  t.end()
+})
+
+test('[each] getting truncated respects nesting order', (t) => {
+  const obj = objerve()
+
+  const {calls, f} = callLog()
+
+  objerve.addListener(obj, ['a', objerve.each], f)
+  objerve.addListener(obj, ['a'], f)
+
+  obj.a = []
+  obj.a.push('hi')
+  obj.a.push('hi')
+  delete obj.a
+
+  t.deepEqual(calls, [
+    [['hi', 'hi'], undefined, 'create', ['a'], obj],
+    ['hi', undefined, 'create', ['a', '0'], obj],
+    ['hi', undefined, 'create', ['a', '1'], obj],
+    [undefined, 'hi', 'delete', ['a', '0'], obj],
+    [undefined, 'hi', 'delete', ['a', '1'], obj],
+    [undefined, ['hi', 'hi'], 'delete', ['a'], obj],
+  ])
+  t.end()
+})

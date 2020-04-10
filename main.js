@@ -4,36 +4,46 @@ const deepObjectDiff = require('deep-object-diff').detailedDiff
 const debug = () => {}
 debug['active'] = console.log
 
-const proxy = (template, rootArg, path=[]) => {
+const proxy = (obj, rootArg, path=[]) => {
   // Primitive values can't have properties, so need no wrapper.
-  if (!isObjectOrArray(template)) return template
+  if (!isObjectOrArray(obj)) return obj
 
   // Everything beyond this point handles proxying Objects that have
   // properties.
 
-  // Make a local copy we can modify without messing up existing references.
-  const obj = Object.assign({}, template)
-
   let root
 
   const node = new Proxy(obj, {
-    set: (_, key, value) => {
+    set: (o, key, value) => {
       let localPath = path.concat([key])
       value = proxy(value, root, localPath)
-      let actionName = key in obj ? 'change' : 'create'
-      const args = [root, actionName, localPath, obj[key], value]
+      let actionName = key in o ? 'change' : 'create'
+      const oldValue = o[key]
+
+      if ((o instanceof Array) && key === 'length') {
+        // Call listeners for any now truncated values.
+        for (let i = value; i < oldValue; ++i) {
+          const indexPath = localPath.slice(0, -1).concat([String(i)])
+          const args = [root, 'delete', indexPath, o[i], undefined]
+          updateBefore(...args)
+        }
+      }
+
+      const args = [root, actionName, localPath, oldValue, value]
 
       updateBefore(...args)
-      obj[key] = value
+      Reflect.set(o, key, value)
       updateAfter(...args)
+      return true // Indicate success
     },
-    deleteProperty: (_, key) => {
+    deleteProperty: (o, key) => {
       let localPath = path.concat([key])
-      const args = [root, 'delete', localPath, obj[key], undefined]
+      const args = [root, 'delete', localPath, o[key], undefined]
 
       updateBefore(...args)
-      delete obj[key]
+      Reflect.deleteProperty(o, key)
       updateAfter(...args)
+      return true // Indicate success
     },
   })
 
@@ -57,16 +67,18 @@ const proxyBase = (template={}) => {
 // root -> (path -> [function])
 const listenersForRoot = new WeakMap()
 
-const callListeners = (root, action, path, oldValue, newValue) => {
-  debug({root, action, path, oldValue, newValue})
+const callListeners = (root, action,
+    listenerPath, propertyPath, oldValue, newValue) => {
+  debug({root, action, listenerPath, propertyPath, oldValue, newValue})
   const pathListeners = listenersForRoot.get(root)
-  if (pathListeners.has(path)) {
-    for (const listener of pathListeners.get(path)) {
-      listener(newValue, oldValue, action, path, root)
+  if (pathListeners.has(listenerPath)) {
+    for (const listener of pathListeners.get(listenerPath)) {
+      listener(newValue, oldValue, action, propertyPath, root)
     }
   }
 }
 
+const EACH = Symbol('objerve [each]')
 const SORT = {
   TRUNK_FIRST: Symbol('sort order: trunk → leaf'),
   LEAF_FIRST: Symbol('sort order: leaf → trunk'),
@@ -76,17 +88,45 @@ const getAllMatchingPaths = (obj, akmap, pathPrefix, sortOrder) => {
   // for.  The akmap is passed so that we can prune the search, and avoid
   // listing path branches we don't even have a subscriber for.
   //
-  // Returns an array of paths.
+  // For aliases like the EACH symbol, it is necessary to return 2 paths: the
+  // path that the listener is at (containing e.g. EACH), and the actual
+  // property path.  Hence the values in the array being objects.
 
   let paths = []
 
-  if (akmap.hasPrefix(pathPrefix)) {
+  // Transform the path looking for array indexes and turning them into EACH
+  // symbols.  That way we can check for listeners to those too.
+  const pathPrefixGeneralised = (() => {
+    let gotSomething = false
+    const generalised = []
+    for (const prop of pathPrefix) {
+      if (isArrayIndex(prop)) {
+        gotSomething = true
+        generalised.push(EACH)
+      } else {
+        generalised.push(prop)
+      }
+    }
+    if (gotSomething) return generalised
+  })()
+
+  if (akmap.hasPrefix(pathPrefix)
+      || (pathPrefixGeneralised && akmap.hasPrefix(pathPrefixGeneralised))) {
     // Explore further
 
     const visitTrunk = () => {
       // Do we have it?
+      if (pathPrefixGeneralised && akmap.has(pathPrefixGeneralised)) {
+        paths.push({
+          propertyPath: pathPrefix,
+          listenerPath: pathPrefixGeneralised,
+        })
+      }
       if (akmap.has(pathPrefix)) {
-        paths.push(pathPrefix)
+        paths.push({
+          propertyPath: pathPrefix,
+          listenerPath: pathPrefix,
+        })
       }
     }
 
@@ -145,7 +185,16 @@ const updateBefore = (root, action, path, oldValue, newValue) => {
   if (oldIsPrimitive && newIsPrimitive) {
     debug([ path, oldValue, "primitive -> primitive", newValue])
     // Both primitives.  Just call the listener for this path.
-    callListeners(root, action, path, oldValue, newValue)
+    const pathListeners = listenersForRoot.get(root)
+
+    const whereIsIt = getAllMatchingPaths(
+      newValue, pathListeners, path, SORT.TRUNK_FIRST)
+    for (const {listenerPath, propertyPath} of whereIsIt) {
+      const pathRelative = propertyPath.slice(path.length)
+      callListeners(root, action, listenerPath, propertyPath,
+        getPath(root, propertyPath),
+        getPath(newValue, pathRelative))
+    }
 
   } else if (oldIsPrimitive && !newIsPrimitive) {
     debug([ path, oldValue, "primitive -> object", newValue])
@@ -153,12 +202,12 @@ const updateBefore = (root, action, path, oldValue, newValue) => {
     // relevant path in the new object.
     const pathListeners = listenersForRoot.get(root)
 
-    const absolutePaths = getAllMatchingPaths(
+    const whereIsIt = getAllMatchingPaths(
       newValue, pathListeners, path, SORT.TRUNK_FIRST)
-    for (const absolutePath of absolutePaths) {
-      const pathRelative = absolutePath.slice(path.length)
-      callListeners(root, 'create', absolutePath,
-        getPath(root, absolutePath),
+    for (const {listenerPath, propertyPath} of whereIsIt) {
+      const pathRelative = propertyPath.slice(path.length)
+      callListeners(root, 'create', listenerPath, propertyPath,
+        getPath(root, propertyPath),
         getPath(newValue, pathRelative))
     }
 
@@ -168,11 +217,11 @@ const updateBefore = (root, action, path, oldValue, newValue) => {
     // every relevant path in the old object.
     const pathListeners = listenersForRoot.get(root)
 
-    const absolutePaths = getAllMatchingPaths(
+    const whereIsIt = getAllMatchingPaths(
       oldValue, pathListeners, path, SORT.LEAF_FIRST)
-    for (const absolutePath of absolutePaths) {
-      callListeners(root, 'delete', absolutePath,
-        getPath(root, absolutePath),
+    for (const {listenerPath, propertyPath} of whereIsIt) {
+      callListeners(root, 'delete', listenerPath, propertyPath,
+        getPath(root, propertyPath),
         undefined)
     }
 
@@ -184,26 +233,26 @@ const updateBefore = (root, action, path, oldValue, newValue) => {
 
     // Handle added
     ;(() => {
-      const absolutePaths = getAllMatchingPaths(
+      const whereIsIt = getAllMatchingPaths(
         added, pathListeners, path, SORT.TRUNK_FIRST)
-      for (const absolutePath of absolutePaths) {
-        const pathRelative = absolutePath.slice(path.length)
+      for (const {listenerPath, propertyPath} of whereIsIt) {
+        const pathRelative = propertyPath.slice(path.length)
         if (pathRelative.length === 0) continue
-        callListeners(root, 'create', absolutePath,
-          getPath(root, absolutePath),
+        callListeners(root, 'create', listenerPath, propertyPath,
+          getPath(root, propertyPath),
           getPath(added, pathRelative))
       }
     })()
 
     // Handle updated
     ;(() => {
-      const absolutePaths = getAllMatchingPaths(
+      const whereIsIt = getAllMatchingPaths(
         updated, pathListeners, path, SORT.TRUNK_FIRST)
-      for (const absolutePath of absolutePaths) {
-        const pathRelative = absolutePath.slice(path.length)
+      for (const {listenerPath, propertyPath} of whereIsIt) {
+        const pathRelative = propertyPath.slice(path.length)
         if (pathRelative.length === 0) continue
-        callListeners(root, 'change', absolutePath,
-          getPath(root, absolutePath),
+        callListeners(root, 'change', listenerPath, propertyPath,
+          getPath(root, propertyPath),
           getPath(updated, pathRelative))
       }
     })()
@@ -216,26 +265,26 @@ const updateBefore = (root, action, path, oldValue, newValue) => {
       const deletedProperties = Object.keys(deleted)
 
       for (const deletedProp of deletedProperties) {
-        const absolutePaths = getAllMatchingPaths(
+        const matchingPaths = getAllMatchingPaths(
           getPath(root, path.concat([deletedProp])),
           pathListeners,
           path.concat([deletedProp]),
           SORT.LEAF_FIRST)
-        for (const absolutePath of absolutePaths) {
-          const pathRelative = absolutePath.slice(path.length)
+
+        for (const {listenerPath, propertyPath} of matchingPaths) {
+          const pathRelative = propertyPath.slice(path.length)
           if (pathRelative.length === 0) continue
-          callListeners(root, 'delete', absolutePath,
-            getPath(root, absolutePath),
+          callListeners(root, 'delete', listenerPath, propertyPath,
+            getPath(root, propertyPath),
             undefined)
       }
 
       }
     })()
 
-
     // In case there is a listener specifically for this path that now
     // contains an object that is being reassigned, let's call that too.
-    callListeners(root, 'change', path, oldValue, newValue)
+    callListeners(root, 'change', path, path, oldValue, newValue)
   }
 }
 const updateAfter = (root, action, path, oldValue, newValue) => {
@@ -308,6 +357,9 @@ const removeByValue = (arr, val) => {
 
 const isObjectOrArray = (x) => x instanceof Object
 
+const isArrayIndex = (x) => x.match(/^[0-9]+$/) ? true : false
+
 module.exports = proxyBase
 proxyBase.addListener = addListener
 proxyBase.removeListener = removeListener
+proxyBase.each = EACH
