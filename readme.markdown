@@ -54,6 +54,14 @@ correct nesting.
 If you have multiple callbacks for the same path, they might be called in any
 order; don't rely on it.
 
+## `objerve.removeListener(obj, path, callback)`
+
+Remove the listener from the given path, so the callback is no longer called.
+The path is useful to disambiguate in case the same callback function is being
+used as the listener for multiple paths.
+
+Does nothing if it cannot find such a listener.
+
 # use-cases
 
  - Binding data to UI components.

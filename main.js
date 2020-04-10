@@ -250,7 +250,16 @@ const addListener = (root, path, func) => {
   listenersForPath.get(path).push(func)
 }
 const removeListener = (root, path, func) => {
-  // TODO
+  const listenersForPath = listenersForRoot.get(root)
+  if (listenersForPath.has(path)) {
+    const listeners = listenersForPath.get(path)
+    // Splice it out
+    removeByValue(listeners, func)
+    // If there are now none left for this path, delete the path
+    if (listeners.length === 0) {
+      listenersForPath.delete(path)
+    }
+  }
 }
 
 const diffObjects = (oldValue, newValue) => {
@@ -291,7 +300,14 @@ const existsAndHasProperty = (x, key) => {
   return isObjectOrArray(x) && (key in x)
 }
 
+const removeByValue = (arr, val) => {
+  const index = arr.indexOf(val)
+  if (index < 0) return
+  arr.splice(index, 1)
+}
+
 const isObjectOrArray = (x) => x instanceof Object
 
 module.exports = proxyBase
 proxyBase.addListener = addListener
+proxyBase.removeListener = removeListener

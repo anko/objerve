@@ -184,3 +184,19 @@ test('trunk and leaf call order when object-diffed', (t) => {
   ])
   t.end()
 })
+
+test('removeListener', (t) => {
+  const obj = objerve({})
+
+  const {calls, f} = callLog()
+  objerve.addListener(obj, ['a'], f)
+
+  obj.a = 1
+  objerve.removeListener(obj, ['a'], f)
+  delete obj.a
+
+  t.deepEqual(calls, [
+    ['create', ['a'], 1, undefined],
+  ])
+  t.end()
+})
