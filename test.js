@@ -59,9 +59,11 @@ test('object assigned 1 level up', (t) => {
   objerve.addListener(obj, ['a', 'b'], f_ab)
 
   obj.a = {b: 1}
+  obj.a = {b: 2}
 
   t.deepEqual(calls_ab, [
     [1, undefined, 'create', ['a', 'b'], obj],
+    [2, 1, 'change', ['a', 'b'], obj],
   ])
   t.end()
 })
@@ -416,6 +418,31 @@ test('listening for array length property', (t) => {
     [0, 2, 'change', ['length'], obj],
     [3, 0, 'change', ['length'], obj],
   ])
+
+  t.end()
+})
+
+test('multiple [each]es and indexes all get called', (t) => {
+  const obj = objerve()
+
+  const {calls: calls_e_e, f: f_e_e} = callLog()
+  const {calls: calls_e_0, f: f_e_0} = callLog()
+
+  objerve.addListener(obj, ['a', objerve.each, objerve.each], f_e_e)
+  objerve.addListener(obj, ['a', objerve.each, '0'], f_e_0)
+
+  obj.a = [['x']]
+  obj.a = [['x'], ['y']]
+  delete obj.a
+
+  // Both get called the same way
+  t.deepEqual(calls_e_e, [
+    ['x', undefined, 'create', ['a', '0', '0'], obj],
+    ['y', undefined, 'create', ['a', '1', '0'], obj],
+    [undefined, 'x', 'delete', ['a', '0', '0'], obj],
+    [undefined, 'y', 'delete', ['a', '1', '0'], obj],
+  ])
+  t.deepEqual(calls_e_0, calls_e_e)
 
   t.end()
 })

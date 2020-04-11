@@ -42,9 +42,8 @@ be listened to with `objerve.addListener`.
 
 ## `objerve.addListener(obj, path, callback)`
 
-The path can contain `objerve.each`, which will call the callback for every key
-of an Object or Array at that position.  The keys it sees are the same set as
-`Object.getOwnPropertyNames` can see; no `Symbol`s or inherited properties.
+The path can contain `objerve.each`, which will match any Array index at that
+position.
 
 Some notes on the order listeners are called:
 

@@ -96,65 +96,90 @@ const callListeners = (root, action,
   }
 }
 
+const generalisePath = (path) => {
+  // Generalise this path, creating every possible listener path that could
+  // match it.  This means converting array indexes also into 'EACH', in every
+  // available permutation.
+
+  let paths = []
+  switch (path.length) {
+    case 1:
+      const elem = path[0]
+      paths.push([elem])
+      if (isArrayIndex(elem)) paths.push([EACH])
+      break
+    default:
+      const [head, ...rest] = path
+      for (let x of generalisePath([head])) {
+        for (let y of generalisePath(rest)) {
+          paths.push(x.concat(y))
+        }
+      }
+      break
+  }
+  return paths
+}
+
 const EACH = Symbol('objerve [each]')
 const SORT = {
   TRUNK_FIRST: Symbol('sort order: trunk → leaf'),
   LEAF_FIRST: Symbol('sort order: leaf → trunk'),
 }
-const getAllMatchingPaths = (obj, akmap, pathPrefix, sortOrder) => {
+const getAllMatchingPaths = (obj, akmap, pathPrefix, sortOrder, listenerPathPrefix) => {
   // Get all paths in the object that the given array-keyed-map also has paths
   // for.  The akmap is passed so that we can prune the search, and avoid
   // listing path branches we don't even have a subscriber for.
   //
-  // For aliases like the EACH symbol, it is necessary to return 2 paths: the
-  // path that the listener is at (containing e.g. EACH), and the actual
-  // property path.  Hence the values in the array being objects.
+  // Because of aliases like the EACH symbol (which matches any array index),
+  // it may be necessary to generalise and return multiple listener paths for
+  // each property path.
 
-  let paths = []
+  // On initial call, fully generalise the property path we've gotten, and
+  // return a join of all recursive calls with every possible interpretation.
+  if (!listenerPathPrefix) {
+    const listenerPathPrefixes = generalisePath(pathPrefix)
+    return listenerPathPrefixes.reduce((prev, next) => {
+      return prev.concat(
+        getAllMatchingPaths(obj, akmap, pathPrefix, sortOrder, next))
+    }, [])
+  }
 
-  // Transform the path looking for array indexes and turning them into EACH
-  // symbols.  That way we can check for listeners to those too.
-  const pathPrefixGeneralised = (() => {
-    let gotSomething = false
-    const generalised = []
-    for (const prop of pathPrefix) {
-      if (isArrayIndex(prop)) {
-        gotSomething = true
-        generalised.push(EACH)
-      } else {
-        generalised.push(prop)
-      }
-    }
-    if (gotSomething) return generalised
-  })()
+  if (!akmap.hasPrefix(listenerPathPrefix)) {
+    // We don't have any listeners with this prefix.  Exit early.
+    return []
+  } else {
+    // We have something somewhere with this prefix.  Explore further.
+    let paths = []
 
-  if (akmap.hasPrefix(pathPrefix)
-      || (pathPrefixGeneralised && akmap.hasPrefix(pathPrefixGeneralised))) {
-    // Explore further
+    // First declare how visiting the current node and children works, then
+    // call them in either order depending on the desired sort order.
 
     const visitTrunk = () => {
-      // Do we have it?
-      if (pathPrefixGeneralised && akmap.has(pathPrefixGeneralised)) {
+      if (akmap.has(listenerPathPrefix)) {
         paths.push({
           propertyPath: pathPrefix,
-          listenerPath: pathPrefixGeneralised,
-        })
-      }
-      if (akmap.has(pathPrefix)) {
-        paths.push({
-          propertyPath: pathPrefix,
-          listenerPath: pathPrefix,
+          listenerPath: listenerPathPrefix,
         })
       }
     }
 
     const visitLeaves = () => {
-      // Do branches have it?
       if (isObjectOrArray(obj)) {
         for (const key of Object.keys(obj)) {
-          paths = paths.concat(
-            getAllMatchingPaths(
-              obj[key], akmap, pathPrefix.concat([key]), sortOrder))
+          // Explore the usual property branch.
+          paths.push(...getAllMatchingPaths(
+            obj[key], akmap,
+            pathPrefix.concat([key]),
+            sortOrder,
+            listenerPathPrefix.concat([key])))
+          if (isArrayIndex(key)) {
+            // This is an array index.  Also explore the EACH branch.
+            paths.push(...getAllMatchingPaths(
+              obj[key], akmap,
+              pathPrefix.concat([key]),
+              sortOrder,
+              listenerPathPrefix.concat([EACH])))
+          }
         }
       }
     }
@@ -172,8 +197,8 @@ const getAllMatchingPaths = (obj, akmap, pathPrefix, sortOrder) => {
         throw new Error(`Invalid sort order: ${sortOrder}`)
     }
 
+    return paths
   }
-  return paths
 }
 
 const getPath = (obj, path) => {
@@ -193,6 +218,8 @@ const getPath = (obj, path) => {
   }
 }
 
+const DEBUG_UPDATE_STRATEGY = false
+
 const update = (root, action, path, oldValue, newValue) => {
 
   const oldIsPrimitive = !isObjectOrArray(oldValue)
@@ -201,7 +228,8 @@ const update = (root, action, path, oldValue, newValue) => {
   debug({root, action, path, oldValue, newValue})
 
   if (oldIsPrimitive && newIsPrimitive) {
-    debug([ path, oldValue, "primitive -> primitive", newValue])
+    if (DEBUG_UPDATE_STRATEGY)
+      console.log([ path, oldValue, "primitive -> primitive", newValue])
     // Both primitives.  Just call the listener for this path.
     const pathListeners = listenersForRoot.get(root)
 
@@ -215,7 +243,8 @@ const update = (root, action, path, oldValue, newValue) => {
     }
 
   } else if (oldIsPrimitive && !newIsPrimitive) {
-    debug([ path, oldValue, "primitive -> object", newValue])
+    if (DEBUG_UPDATE_STRATEGY)
+      console.log([ path, oldValue, "primitive -> object", newValue])
     // Primitive being overwritten with an Object.  Call listeners for every
     // relevant path in the new object.
     const pathListeners = listenersForRoot.get(root)
@@ -230,7 +259,8 @@ const update = (root, action, path, oldValue, newValue) => {
     }
 
   } else if (!oldIsPrimitive && newIsPrimitive) {
-    debug([ path, oldValue, "object -> primitive", newValue])
+    if (DEBUG_UPDATE_STRATEGY)
+      console.log([ path, oldValue, "object -> primitive", newValue])
     // Object being overwritten with a primitive value.  Call listeners for
     // every relevant path in the old object.
     const pathListeners = listenersForRoot.get(root)
@@ -244,7 +274,8 @@ const update = (root, action, path, oldValue, newValue) => {
     }
 
   } else {
-    debug([ path, oldValue, "object -> object", newValue])
+    if (DEBUG_UPDATE_STRATEGY)
+      console.log([ path, oldValue, "object -> object", newValue])
     // Both Objects.  Diff them and call listeners for all the relevant paths.
     const {added, updated, deleted} = diffObjects(oldValue, newValue)
     const pathListeners = listenersForRoot.get(root)
