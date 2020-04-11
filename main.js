@@ -8,6 +8,28 @@ const proxy = (obj, rootArg, path=[]) => {
   // Primitive values can't have properties, so need no wrapper.
   if (!isObjectOrArray(obj)) return obj
 
+  // If the value is already a proxy, we're done.  (This happens if a proxy
+  // object was created and then set as a property value for us.)
+  if (listenersForRoot.has(obj)) {
+    // Subscribe to changes on that object, and call updates on us when paths
+    // on it change.  Also subscribe to this property on ourselves, so if it
+    // changes to point to some other value, we clean up both listeners.
+    const prefixListener = (newValue, oldValue, action, subPath, obj) => {
+      update(rootArg, action, path.concat(subPath), oldValue, newValue)
+    }
+    addPrefixListener(obj, [], prefixListener)
+
+    const propertyListener = (newValue, oldValue, action, path, _) => {
+      if (newValue !== obj) {
+        removeListener(rootArg, path, propertyListener)
+        removePrefixListener(obj, [], prefixListener)
+      }
+    }
+    addListener(rootArg, path, propertyListener)
+
+    return obj
+  }
+
   // Everything beyond this point handles proxying Objects that have
   // properties.
 
