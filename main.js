@@ -205,9 +205,9 @@ const update = (root, action, path, oldValue, newValue) => {
     // Both primitives.  Just call the listener for this path.
     const pathListeners = listenersForRoot.get(root)
 
-    const whereIsIt = getAllMatchingPaths(
+    const matchingPaths = getAllMatchingPaths(
       newValue, pathListeners, path, SORT.TRUNK_FIRST)
-    for (const {listenerPath, propertyPath} of whereIsIt) {
+    for (const {listenerPath, propertyPath} of matchingPaths) {
       const pathRelative = propertyPath.slice(path.length)
       callListeners(root, action, listenerPath, propertyPath,
         oldValue,
@@ -220,9 +220,9 @@ const update = (root, action, path, oldValue, newValue) => {
     // relevant path in the new object.
     const pathListeners = listenersForRoot.get(root)
 
-    const whereIsIt = getAllMatchingPaths(
+    const matchingPaths = getAllMatchingPaths(
       newValue, pathListeners, path, SORT.TRUNK_FIRST)
-    for (const {listenerPath, propertyPath} of whereIsIt) {
+    for (const {listenerPath, propertyPath} of matchingPaths) {
       const pathRelative = propertyPath.slice(path.length)
       callListeners(root, 'create', listenerPath, propertyPath,
         getPath(root, propertyPath),
@@ -235,9 +235,9 @@ const update = (root, action, path, oldValue, newValue) => {
     // every relevant path in the old object.
     const pathListeners = listenersForRoot.get(root)
 
-    const whereIsIt = getAllMatchingPaths(
+    const matchingPaths = getAllMatchingPaths(
       oldValue, pathListeners, path, SORT.LEAF_FIRST)
-    for (const {listenerPath, propertyPath} of whereIsIt) {
+    for (const {listenerPath, propertyPath} of matchingPaths) {
       callListeners(root, 'delete', listenerPath, propertyPath,
         getPath(root, propertyPath),
         undefined)
@@ -251,9 +251,9 @@ const update = (root, action, path, oldValue, newValue) => {
 
     // Handle added
     ;(() => {
-      const whereIsIt = getAllMatchingPaths(
+      const matchingPaths = getAllMatchingPaths(
         added, pathListeners, path, SORT.TRUNK_FIRST)
-      for (const {listenerPath, propertyPath} of whereIsIt) {
+      for (const {listenerPath, propertyPath} of matchingPaths) {
         const pathRelative = propertyPath.slice(path.length)
         if (pathRelative.length === 0) continue
         callListeners(root, 'create', listenerPath, propertyPath,
@@ -264,9 +264,9 @@ const update = (root, action, path, oldValue, newValue) => {
 
     // Handle updated
     ;(() => {
-      const whereIsIt = getAllMatchingPaths(
+      const matchingPaths = getAllMatchingPaths(
         updated, pathListeners, path, SORT.TRUNK_FIRST)
-      for (const {listenerPath, propertyPath} of whereIsIt) {
+      for (const {listenerPath, propertyPath} of matchingPaths) {
         const pathRelative = propertyPath.slice(path.length)
         if (pathRelative.length === 0) continue
         callListeners(root, 'change', listenerPath, propertyPath,
