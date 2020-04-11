@@ -39,7 +39,7 @@ const proxy = (obj, rootArg, path=[]) => {
           for (let i = value; i < oldValue; ++i) {
             const indexPath = localPath.slice(0, -1).concat([String(i)])
             const args = [root, 'delete', indexPath, o[i], undefined]
-            updateBefore(...args)
+            update(...args)
             o.length = value
           }
           // Use the old array length value from the cache.
@@ -51,18 +51,16 @@ const proxy = (obj, rootArg, path=[]) => {
 
       const args = [root, actionName, localPath, oldValue, value]
 
-      updateBefore(...args)
+      update(...args)
       Reflect.set(o, key, value)
-      updateAfter(...args)
       return true // Indicate success
     },
     deleteProperty: (o, key) => {
       let localPath = path.concat([key])
       const args = [root, 'delete', localPath, o[key], undefined]
 
-      updateBefore(...args)
+      update(...args)
       Reflect.deleteProperty(o, key)
-      updateAfter(...args)
       return true // Indicate success
     },
   })
@@ -195,7 +193,7 @@ const getPath = (obj, path) => {
   }
 }
 
-const updateBefore = (root, action, path, oldValue, newValue) => {
+const update = (root, action, path, oldValue, newValue) => {
 
   const oldIsPrimitive = !isObjectOrArray(oldValue)
   const newIsPrimitive = !isObjectOrArray(newValue)
@@ -306,9 +304,6 @@ const updateBefore = (root, action, path, oldValue, newValue) => {
     // contains an object that is being reassigned, let's call that too.
     callListeners(root, 'change', path, path, oldValue, newValue)
   }
-}
-const updateAfter = (root, action, path, oldValue, newValue) => {
-  // TODO
 }
 
 const addListener = (root, path, func) => {
