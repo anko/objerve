@@ -332,10 +332,10 @@ test('[each]', (t) => {
   obj.a = ['one']
 
   t.deepEqual(calls, [
-    ['zero', undefined, 'create', ['a', '0'], obj],
-    ['one', undefined, 'create', ['a', '1'], obj],
-    ['one', 'zero', 'change', ['a', '0'], obj],
-    [undefined, 'one', 'delete', ['a', '1'], obj],
+    ['zero', undefined, 'create', ['a', 0], obj],
+    ['one', undefined, 'create', ['a', 1], obj],
+    ['one', 'zero', 'change', ['a', 0], obj],
+    [undefined, 'one', 'delete', ['a', 1], obj],
   ])
   t.end()
 })
@@ -351,8 +351,8 @@ test('[each] -> something else', (t) => {
   obj.a.push({x: 'hello'})
 
   t.deepEqual(calls, [
-    ['hi', undefined, 'create', ['a', '0', 'x'], obj],
-    ['hello', undefined, 'create', ['a', '1', 'x'], obj],
+    ['hi', undefined, 'create', ['a', 0, 'x'], obj],
+    ['hello', undefined, 'create', ['a', 1, 'x'], obj],
   ])
   t.end()
 })
@@ -369,9 +369,9 @@ test('bare [each]', (t) => {
   obj.length = 1 // Truncate off one of them
 
   t.deepEqual(calls, [
-    ['hi', undefined, 'create', ['0'], obj],
-    ['hi', undefined, 'create', ['1'], obj],
-    [undefined, 'hi', 'delete', ['1'], obj],
+    ['hi', undefined, 'create', [0], obj],
+    ['hi', undefined, 'create', [1], obj],
+    [undefined, 'hi', 'delete', [1], obj],
   ])
   t.end()
 })
@@ -391,10 +391,10 @@ test('[each] getting truncated respects nesting order', (t) => {
 
   t.deepEqual(calls, [
     [['hi', 'hi'], undefined, 'create', ['a'], obj],
-    ['hi', undefined, 'create', ['a', '0'], obj],
-    ['hi', undefined, 'create', ['a', '1'], obj],
-    [undefined, 'hi', 'delete', ['a', '0'], obj],
-    [undefined, 'hi', 'delete', ['a', '1'], obj],
+    ['hi', undefined, 'create', ['a', 0], obj],
+    ['hi', undefined, 'create', ['a', 1], obj],
+    [undefined, 'hi', 'delete', ['a', 0], obj],
+    [undefined, 'hi', 'delete', ['a', 1], obj],
     [undefined, ['hi', 'hi'], 'delete', ['a'], obj],
   ])
   t.end()
@@ -429,7 +429,7 @@ test('multiple [each]es and indexes all get called', (t) => {
   const {calls: calls_e_0, f: f_e_0} = callLog()
 
   objerve.addListener(obj, ['a', objerve.each, objerve.each], f_e_e)
-  objerve.addListener(obj, ['a', objerve.each, '0'], f_e_0)
+  objerve.addListener(obj, ['a', objerve.each, 0], f_e_0)
 
   obj.a = [['x']]
   obj.a = [['x'], ['y']]
@@ -437,10 +437,10 @@ test('multiple [each]es and indexes all get called', (t) => {
 
   // Both get called the same way
   t.deepEqual(calls_e_e, [
-    ['x', undefined, 'create', ['a', '0', '0'], obj],
-    ['y', undefined, 'create', ['a', '1', '0'], obj],
-    [undefined, 'x', 'delete', ['a', '0', '0'], obj],
-    [undefined, 'y', 'delete', ['a', '1', '0'], obj],
+    ['x', undefined, 'create', ['a', 0, 0], obj],
+    ['y', undefined, 'create', ['a', 1, 0], obj],
+    [undefined, 'x', 'delete', ['a', 0, 0], obj],
+    [undefined, 'y', 'delete', ['a', 1, 0], obj],
   ])
   t.deepEqual(calls_e_0, calls_e_e)
 
@@ -503,7 +503,7 @@ test('generic listener call order respects nesting', (t) => {
   const which = []
   objerve.addPrefixListener(obj, [], () => which.push('prefix'))
   objerve.addListener(obj, [objerve.each], () => which.push('each'))
-  objerve.addListener(obj, ['0'], () => which.push('index'))
+  objerve.addListener(obj, [0], () => which.push('index'))
 
   obj[0] = 'x'
   obj[0] = 'y'

@@ -97,6 +97,8 @@ const callListeners = (root, action,
     }
   }
 
+  propertyPath = propertyPath.map((x) => isArrayIndex(x) ? Number(x) : x)
+
   const pathListeners = listenersForRoot.get(root)
   if (pathListeners.has(listenerPath)) {
     for (const listener of pathListeners.get(listenerPath)) {
@@ -409,6 +411,7 @@ const update = (root, action, path, oldValue, newValue) => {
 }
 
 const addListener = (root, path, func) => {
+  path = path.map((x) => typeof x === 'number' ? String(x) : x)
   const listenersForPath = listenersForRoot.get(root)
   if (!listenersForPath.has(path)) {
     listenersForPath.set(path, [])
