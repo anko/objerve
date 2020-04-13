@@ -1,8 +1,8 @@
 # objerve
 
 Define callbacks listening for changes inside given object paths.  Supports
-path prefixes, array index wildcards, and [calls your listeners in a smart
-order](#call-order).
+path prefixes, array index wildcards, nested instances, and [calls your
+listeners in a smart order](#call-order).
 
 # example
 
@@ -72,6 +72,11 @@ to any property.
 ## `objerve.removePrefixListener(obj, path, callback)`
 
 Same as `removeListener`, but for prefix listeners.
+
+## `objerve.each`
+
+A special Symbol value that can be passed as part of a path.  It matches any
+array index.
 
 # call order
 

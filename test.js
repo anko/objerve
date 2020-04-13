@@ -528,14 +528,11 @@ test('objerve instance as property of another', (t) => {
   objerve.addListener(obj2, ['b'], f2)
 
   obj2.b = true
-  console.log('set to other')
   obj1.a = obj2
-  console.log('delete other')
   delete obj2.b
 
   // Setting obj1.a to something that isn't obj2 should break the link between
   // the two, so obj1 listeners no longer get updates for obj2.b changing.
-  console.log('set to different')
   obj1.a = {}
   obj1.a.b = 'test 1'
   obj2.b = 'test 2'
@@ -550,6 +547,46 @@ test('objerve instance as property of another', (t) => {
     [true, undefined, 'create', ['b'], obj2],
     [undefined, true, 'delete', ['b'], obj2],
     ['test 2', undefined, 'create', ['b'], obj2],
+  ])
+  t.end()
+})
+
+test('objerve instance property passed as property', (t) => {
+  const obj1 = objerve()
+  const obj2 = objerve()
+
+  const {calls: calls1, f: f1} = callLog()
+  const {calls: calls2, f: f2} = callLog()
+
+  objerve.addListener(obj1, ['a', 'b'], f1)
+  objerve.addListener(obj2, ['x', 'b'], f2)
+
+  obj2.x = {b: true}
+  obj1.a = obj2.x
+
+  delete obj2.x.b
+
+  t.deepEqual(calls1, [
+    [true, undefined, 'create', ['a', 'b'], obj1],
+    [undefined, true, 'delete', ['a', 'b'], obj1],
+  ])
+
+  t.deepEqual(calls2, [
+    [true, undefined, 'create', ['x', 'b'], obj2],
+    [undefined, true, 'delete', ['x', 'b'], obj2],
+  ])
+  t.end()
+})
+
+test('addListener to subproperty', (t) => {
+  const obj = objerve()
+  const {calls, f} = callLog()
+  obj.a = {b: true}
+  objerve.addListener(obj.a, ['b'], f)
+  obj.a.b = false
+
+  t.deepEqual(calls, [
+    [false, true, 'change', ['b'], obj.a],
   ])
   t.end()
 })

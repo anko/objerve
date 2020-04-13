@@ -4,25 +4,31 @@ const deepObjectDiff = require('deep-object-diff').detailedDiff
 const debug = () => {}
 debug['active'] = console.log
 
+const rootOfProxy = new WeakMap()
+const pathOfProxy = new WeakMap()
+
 const proxy = (obj, rootArg, path=[]) => {
   // Primitive values can't have properties, so need no wrapper.
   if (!isObjectOrArray(obj)) return obj
 
   // If the value is already a proxy, we're done.  (This happens if a proxy
   // object was created and then set as a property value for us.)
-  if (listenersForRoot.has(obj)) {
+  if (rootOfProxy.has(obj)) {
     // Subscribe to changes on that object, and call updates on us when paths
     // on it change.  Also subscribe to this property on ourselves, so if it
     // changes to point to some other value, we clean up both listeners.
-    const prefixListener = (newValue, oldValue, action, subPath, obj) => {
-      update(rootArg, action, path.concat(subPath), oldValue, newValue)
+    const subRoot = rootOfProxy.get(obj)
+    const subPath = pathOfProxy.get(obj)
+    const prefixListener = (newValue, oldValue, action, changePath, obj) => {
+      changePath = changePath.slice(subPath.length)
+      update(rootArg, action, path.concat(changePath), oldValue, newValue)
     }
-    addPrefixListener(obj, [], prefixListener)
+    addPrefixListener(subRoot, [], prefixListener)
 
     const propertyListener = (newValue, oldValue, action, path, _) => {
       if (newValue !== obj) {
         removeListener(rootArg, path, propertyListener)
-        removePrefixListener(obj, [], prefixListener)
+        removePrefixListener(subRoot, [], prefixListener)
       }
     }
     addListener(rootArg, path, propertyListener)
@@ -88,6 +94,9 @@ const proxy = (obj, rootArg, path=[]) => {
 
   // If we didn't get a root passed in, we're the root
   root = rootArg || node
+
+  rootOfProxy.set(node, root)
+  pathOfProxy.set(node, path)
 
   // Proxy the contents
   for (const key of Object.getOwnPropertyNames(obj)) {
@@ -432,20 +441,48 @@ const update = (root, action, path, oldValue, newValue) => {
   }
 }
 
-const addListener = (root, path, func) => {
+const wrapperOfCallback = new WeakMap()
+
+const addListener = (obj, path, func) => {
+  // Convert path elements to strings for internal consistency.  A string that
+  // looks like a number is equivalent to that number when used as a property
+  // name, and we use this representation.
   path = path.map((x) => typeof x === 'number' ? String(x) : x)
+
+  // The object 'obj' we are being asked to listen to may actually be a proxied
+  // object that is a subproperty of an objerve root object.  We can only
+  // subscribe to its root, but if we did that, the callback would be called
+  // with an absolute path from the root, which a user wouldn't expect.
+  //
+  // For this reason, we have to create a wrapper function that massages the
+  // path and value passed to the user's callback, such that they are relative
+  // to the subproperty object that they called addListener on.
+  const root = rootOfProxy.get(obj)
+  const subPath = pathOfProxy.get(obj)
+  const wrapperFunction = (newVal, oldVal, action, path, objRef) => {
+    func(newVal, oldVal, action,
+      path.slice(subPath.length),
+      getPath(objRef, subPath))
+  }
+  wrapperOfCallback.set(func, wrapperFunction)
+
+  // If 'obj' is actually a root, then subPath will be an empty array, and this
+  // concat effectively does nothing.
+  path = subPath.concat(path)
+
   const listenersForPath = listenersForRoot.get(root)
   if (!listenersForPath.has(path)) {
     listenersForPath.set(path, [])
   }
-  listenersForPath.get(path).push(func)
+  listenersForPath.get(path).push(wrapperFunction)
 }
 const removeListener = (root, path, func) => {
   const listenersForPath = listenersForRoot.get(root)
   if (listenersForPath.has(path)) {
     const listeners = listenersForPath.get(path)
+    const wrapperFunc = wrapperOfCallback.get(func)
     // Splice it out
-    removeByValue(listeners, func)
+    removeByValue(listeners, wrapperFunc)
     // If there are now none left for this path, delete the path
     if (listeners.length === 0) {
       listenersForPath.delete(path)
