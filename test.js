@@ -497,3 +497,22 @@ test('removePrefixListener', (t) => {
   ])
   t.end()
 })
+
+test('generic listener call order respects nesting', (t) => {
+  const obj = objerve([])
+  const which = []
+  objerve.addPrefixListener(obj, [], () => which.push('prefix'))
+  objerve.addListener(obj, [objerve.each], () => which.push('each'))
+  objerve.addListener(obj, ['0'], () => which.push('index'))
+
+  obj[0] = 'x'
+  obj[0] = 'y'
+  delete obj[0]
+
+  t.deepEqual(which, [
+    'prefix', 'each', 'index',
+    'prefix', 'each', 'index',
+    'index', 'each', 'prefix'
+  ])
+  t.end()
+})

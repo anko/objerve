@@ -24,11 +24,11 @@ obj.a = null
 
 <!-- !test out first example -->
 
-```
-create a.b: undefined -> "hi"
-change a.b: "hi" -> "hello"
-delete a.b: "hello" -> undefined
-```
+> ```
+> create a.b: undefined -> "hi"
+> change a.b: "hi" -> "hello"
+> delete a.b: "hello" -> undefined
+> ```
 
 # api
 
@@ -73,9 +73,83 @@ Same as `removeListener`, but for prefix listeners.
 
 # call order
 
-Some notes on the order listeners are called:
+When one change triggers multiple callbacks, they are called in increasing
+order of specificity (root→leaf) when the change is a property creation or
+change, and in decreasing order of specificity (leaf→root) when the change is a
+deletion.  This maintains correct nesting order, so if your listeners further
+out want to setup or teardown state that is used by listeners further in, they
+can do so.
 
- - Multiple callbacks for the same path are called in insertion order.
+<details><summary>Example</summary>
+
+<!-- !test in call order -->
+```js
+const objerve = require('./main.js')
+const obj = objerve()
+
+const callback = (name) => {
+  return (val, previousVal, action) => {
+    console.log(`${action} ${name}`)
+  }
+}
+
+objerve.addListener(obj, ['a'], callback('a'))
+objerve.addListener(obj, ['a', 'b'], callback('a.b'))
+
+obj.a = { b: 'hi' }
+delete obj.a
+```
+
+<!-- !test out call order -->
+
+> ```
+> create a
+> create a.b
+> delete a.b
+> delete a
+> ```
+</details>
+
+The same applies if one property matches a prefix listener, `object.each`, or
+concrete property.  Prefix listeners are considered the least specific, and
+concrete properties the most specific, and they are called in root→leaf for
+creation and changes, and leaf→root for deletions.
+
+<details><summary>Example</summary>
+
+<!-- !test in tree each call order -->
+```js
+const objerve = require('./main.js')
+const obj = objerve([])
+
+const callback = (name) => {
+  return (val, previousVal, action) => {
+    console.log(`${action} ${name}`)
+  }
+}
+
+objerve.addListener(obj, ['0'], callback('index'))
+objerve.addListener(obj, [objerve.each], callback('each'))
+objerve.addPrefixListener(obj, [], callback('prefix'))
+
+obj[0] = true
+delete obj[0]
+```
+<!-- !test out tree each call order -->
+
+> ```
+> create prefix
+> create each
+> create index
+> delete index
+> delete each
+> delete prefix
+> ```
+</details>
+
+More specifically, the call order is as follows:
+
+ - Multiple listeners for the exact same path are called in insertion order.
 
    *For example*, if you have 2 listeners for `['a', 'b']`, the one added first
    is called first.

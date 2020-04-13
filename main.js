@@ -105,7 +105,7 @@ const callListeners = (root, action,
   }
 }
 
-const generalisePath = (path) => {
+const generalisePath = (path, sortOrder) => {
   // Generalise this path, creating every possible listener path that could
   // match it.  More specifically:
   //
@@ -113,27 +113,31 @@ const generalisePath = (path) => {
   // - Letting the path terminate with 'TREE' anywhere including root
 
   let paths = []
+  if (sortOrder === SORT.TRUNK_FIRST) paths.push([TREE])
   switch (path.length) {
     case 1:
       const elem = path[0]
-      // Normal property
-      paths.push([elem])
-      // If it's an array index, let it also match EACH.
-      if (isArrayIndex(elem)) paths.push([EACH])
+      if (sortOrder === SORT.TRUNK_FIRST) {
+        if (isArrayIndex(elem)) paths.push([EACH])
+        paths.push([elem])
+      } else {
+        paths.push([elem])
+        if (isArrayIndex(elem)) paths.push([EACH])
+      }
       break
     default:
       const [head, ...rest] = path
-      for (let x of generalisePath([head])) {
+      for (let x of generalisePath([head], sortOrder)) {
         // A 'TREE' symbol always terminates a listener path anyway, so don't
         // bother searching after it.
         if (last(x) === TREE) continue
-        for (let y of generalisePath(rest)) {
+        for (let y of generalisePath(rest, sortOrder)) {
           paths.push(x.concat(y))
         }
       }
       break
   }
-  paths.push([TREE])
+  if (sortOrder !== SORT.TRUNK_FIRST) paths.push([TREE])
   return paths
 }
 
@@ -155,7 +159,7 @@ const getAllMatchingPaths = (obj, akmap, pathPrefix, sortOrder, listenerPathPref
   // On initial call, fully generalise the property path we've gotten, and
   // return a join of all recursive calls with every possible interpretation.
   if (!listenerPathPrefix) {
-    const listenerPathPrefixes = generalisePath(pathPrefix)
+    const listenerPathPrefixes = generalisePath(pathPrefix, sortOrder)
     return listenerPathPrefixes.reduce((prev, next) => {
       return prev.concat(
         getAllMatchingPaths(obj, akmap, pathPrefix, sortOrder, next))
@@ -278,6 +282,8 @@ const update = (root, action, path, oldValue, newValue) => {
   const oldIsPrimitive = !isObjectOrArray(oldValue)
   const newIsPrimitive = !isObjectOrArray(newValue)
 
+  const sortOrder = action === 'set' ? SORT.TRUNK_FIRST : SORT.LEAF_FIRST
+
   debug({root, action, path, oldValue, newValue})
 
   if (oldIsPrimitive && newIsPrimitive) {
@@ -287,7 +293,7 @@ const update = (root, action, path, oldValue, newValue) => {
     const pathListeners = listenersForRoot.get(root)
 
     const matchingPaths = getAllMatchingPaths(
-      newValue, pathListeners, path, SORT.TRUNK_FIRST)
+      newValue, pathListeners, path, sortOrder)
     for (const {listenerPath, propertyPath} of matchingPaths) {
       const pathRelative = propertyPath.slice(path.length)
       callListeners(root, action, listenerPath, propertyPath,
@@ -310,6 +316,7 @@ const update = (root, action, path, oldValue, newValue) => {
         getPath(root, propertyPath),
         getPath(newValue, pathRelative))
     }
+    // TODO and also call for new value??
 
   } else if (!oldIsPrimitive && newIsPrimitive) {
     if (DEBUG_UPDATE_STRATEGY)
@@ -333,7 +340,7 @@ const update = (root, action, path, oldValue, newValue) => {
 
     // Call listeners for this path that the object is being assigned to.
     ;(() => {
-      const matchingPaths = generalisePath(path).map((x) => {
+      const matchingPaths = generalisePath(path, SORT.TRUNK_FIRST).map((x) => {
         return { listenerPath: x, propertyPath: path }
       })
       for (const {listenerPath, propertyPath} of matchingPaths) {
