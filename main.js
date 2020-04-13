@@ -107,29 +107,38 @@ const callListeners = (root, action,
 
 const generalisePath = (path) => {
   // Generalise this path, creating every possible listener path that could
-  // match it.  This means converting array indexes also into 'EACH', in every
-  // available permutation.
+  // match it.  More specifically:
+  //
+  // - Letting array indexes be themselves or 'EACH'
+  // - Letting the path terminate with 'TREE' anywhere including root
 
   let paths = []
   switch (path.length) {
     case 1:
       const elem = path[0]
+      // Normal property
       paths.push([elem])
+      // If it's an array index, let it also match EACH.
       if (isArrayIndex(elem)) paths.push([EACH])
       break
     default:
       const [head, ...rest] = path
       for (let x of generalisePath([head])) {
+        // A 'TREE' symbol always terminates a listener path anyway, so don't
+        // bother searching after it.
+        if (last(x) === TREE) continue
         for (let y of generalisePath(rest)) {
           paths.push(x.concat(y))
         }
       }
       break
   }
+  paths.push([TREE])
   return paths
 }
 
 const EACH = Symbol('objerve [each]')
+const TREE = Symbol('objerve [tree]')
 const SORT = {
   TRUNK_FIRST: Symbol('sort order: trunk → leaf'),
   LEAF_FIRST: Symbol('sort order: leaf → trunk'),
@@ -161,7 +170,7 @@ const getAllMatchingPaths = (obj, akmap, pathPrefix, sortOrder, listenerPathPref
     let paths = []
 
     // First declare how visiting the current node and children works, then
-    // call them in either order depending on the desired sort order.
+    // call them depending on the given sort order.
 
     const visitTrunk = () => {
       if (akmap.has(listenerPathPrefix)) {
@@ -175,19 +184,33 @@ const getAllMatchingPaths = (obj, akmap, pathPrefix, sortOrder, listenerPathPref
     const visitLeaves = () => {
       if (isObjectOrArray(obj)) {
         for (const key of Object.keys(obj)) {
+
+          // When calling recursively for children, extend the
+          // listenerPathPrefix with a possible property key, unless it
+          // terminates with TREE; in those cases we still want to extend
+          // pathPrefix, but leave the listenerPathPrefix as-is, so the same
+          // prefix listener gets called for everything under it.
+
           // Explore the usual property branch.
+          const listenerPath = last(listenerPathPrefix) === TREE
+            ? listenerPathPrefix
+            : listenerPathPrefix.concat([key])
           paths.push(...getAllMatchingPaths(
             obj[key], akmap,
             pathPrefix.concat([key]),
             sortOrder,
-            listenerPathPrefix.concat([key])))
+            listenerPath))
+
           if (isArrayIndex(key)) {
             // This is an array index.  Also explore the EACH branch.
+            const listenerPath = last(listenerPathPrefix) === TREE
+              ? listenerPathPrefix
+              : listenerPathPrefix.concat([EACH])
             paths.push(...getAllMatchingPaths(
               obj[key], akmap,
               pathPrefix.concat([key]),
               sortOrder,
-              listenerPathPrefix.concat([EACH])))
+              listenerPath))
           }
         }
       }
@@ -209,6 +232,9 @@ const getAllMatchingPaths = (obj, akmap, pathPrefix, sortOrder, listenerPathPref
     return paths
   }
 }
+
+const last = (arr) => arr[arr.length - 1]
+
 
 const hasPath = (obj, path) => {
   if (!isObjectOrArray(obj)) return false
@@ -303,12 +329,26 @@ const update = (root, action, path, oldValue, newValue) => {
   } else {
     if (DEBUG_UPDATE_STRATEGY)
       console.log([ path, oldValue, "object -> object", newValue])
-    // Both Objects.  Diff them and call listeners for all the relevant paths.
-    const {added, updated, deleted} = diffObjects(oldValue, newValue)
     const pathListeners = listenersForRoot.get(root)
 
-    // Handle added
+    // Call listeners for this path that the object is being assigned to.
     ;(() => {
+      const matchingPaths = generalisePath(path).map((x) => {
+        return { listenerPath: x, propertyPath: path }
+      })
+      for (const {listenerPath, propertyPath} of matchingPaths) {
+        callListeners(root, action, listenerPath, propertyPath,
+          oldValue,
+          newValue)
+      }
+    })()
+
+    // Diff the old and new objects and call listeners for all the relevant
+    // paths that were added, updated, or deleted.
+    const {added, updated, deleted} = diffObjects(oldValue, newValue)
+
+    ;(() => {
+      // Handle added
       const matchingPaths = getAllMatchingPaths(
         added, pathListeners, path, SORT.TRUNK_FIRST)
       for (const {listenerPath, propertyPath} of matchingPaths) {
@@ -320,8 +360,8 @@ const update = (root, action, path, oldValue, newValue) => {
       }
     })()
 
-    // Handle updated
     ;(() => {
+      // Handle updated
       const matchingPaths = getAllMatchingPaths(
         updated, pathListeners, path, SORT.TRUNK_FIRST)
       for (const {listenerPath, propertyPath} of matchingPaths) {
@@ -333,11 +373,13 @@ const update = (root, action, path, oldValue, newValue) => {
       }
     })()
 
-    // Handle deleted
     ;(() => {
-      // For each of the deleted properties, find the actual full paths of
-      // everything that was under there (the diff summary doesn't show those),
-      // and call listeners for their deletion.
+      // Handle deleted
+      //
+      // A deleted property may have been an object with properties, and the
+      // diff only shows the topmost level that got deleted.  We want every
+      // deleted property's full path though, so we can call its listeners to
+      // inform of their deletion.
       const deletedProperties = Object.keys(deleted)
 
       for (const deletedProp of deletedProperties) {
@@ -354,24 +396,8 @@ const update = (root, action, path, oldValue, newValue) => {
             getPath(root, propertyPath),
             undefined)
         }
-
       }
     })()
-
-    ;(() => {
-      // In case there is a listener specifically for this path that now
-      // contains an object that is being reassigned, let's call that too.
-
-      const matchingPaths = generalisePath(path).map((x) => {
-        return { listenerPath: x, propertyPath: path }
-      })
-      for (const {listenerPath, propertyPath} of matchingPaths) {
-        callListeners(root, action, listenerPath, propertyPath,
-          oldValue,
-          newValue)
-      }
-    })()
-
   }
 }
 
@@ -393,6 +419,15 @@ const removeListener = (root, path, func) => {
       listenersForPath.delete(path)
     }
   }
+}
+
+const addPrefixListener = (root, path, func) => {
+  path = path.concat([TREE])
+  addListener(root, path, func)
+}
+const removePrefixListener = (root, path, func) => {
+  path = path.concat([TREE])
+  removeListener(root, path, func)
 }
 
 const diffObjects = (oldValue, newValue) => {
@@ -446,4 +481,6 @@ const isArrayIndex = (x) => x.match(/^[0-9]+$/) ? true : false
 module.exports = proxyBase
 proxyBase.addListener = addListener
 proxyBase.removeListener = removeListener
+proxyBase.addPrefixListener = addPrefixListener
+proxyBase.removePrefixListener = removePrefixListener
 proxyBase.each = EACH

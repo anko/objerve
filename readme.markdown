@@ -45,6 +45,34 @@ be listened to with `objerve.addListener`.
 The path can contain `objerve.each`, which will match any Array index at that
 position.
 
+Works inside listener callbacks.  If you add a listener for the same path
+inside a callback for that path, the new listener will also be called with the
+same change.
+
+## `objerve.removeListener(obj, path, callback)`
+
+Remove the listener from the given path, so the callback is no longer called.
+The path is useful to disambiguate in case the same callback function is being
+used as the listener for multiple paths.
+
+Does nothing if it cannot find such a listener.
+
+Works inside listener callbacks.  If you remove a listener for the same path
+inside a callback for that path, the removed listener won't be called for that
+change either (unless it was already called before you).
+
+## `objerve.addPrefixListener(obj, path, callback)`
+
+Same as `addListener`, but will be called for any property at all that has the
+given `path` as a prefix.  Pass `[]` for the path to be called for every change
+to any property.
+
+## `objerve.removePrefixListener(obj, path, callback)`
+
+Same as `removeListener`, but for prefix listeners.
+
+# call order
+
 Some notes on the order listeners are called:
 
  - Multiple callbacks for the same path are called in insertion order.
@@ -70,21 +98,13 @@ Some notes on the order listeners are called:
    that are both called by the same change, then the one defined first is
    called first.
 
-Works inside listener callbacks.  If you add a listener for the same path
-inside a callback for that path, the new listener will also be called with the
-same change.
+ - More specific listeners are called before more general ones.  A named
+   property is highest priority, followed by `objerve.each`, followed by prefix
+   listeners.
 
-## `objerve.removeListener(obj, path, callback)`
+   *For example*, when the property `obj.x.y` changes, the listener for ['x',
+   'y'] is called before the prefix listener for `['x']`.
 
-Remove the listener from the given path, so the callback is no longer called.
-The path is useful to disambiguate in case the same callback function is being
-used as the listener for multiple paths.
-
-Does nothing if it cannot find such a listener.
-
-Works inside listener callbacks.  If you remove a listener for the same path
-inside a callback for that path, the removed listener won't be called for that
-change either (unless it was already called before you).
 
 # use-cases
 

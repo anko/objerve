@@ -446,3 +446,54 @@ test('multiple [each]es and indexes all get called', (t) => {
 
   t.end()
 })
+
+test('prefix listener', (t) => {
+  const obj = objerve()
+
+  const {calls, f} = callLog()
+
+  objerve.addPrefixListener(obj, [], f)
+
+  obj.a = 1
+  obj.b = 2
+  obj.a = {c: 3}
+
+  obj.a = {x: {y: {z: 42}}}
+  obj.a.x.y.z = 69
+  delete obj.a
+
+  t.deepEqual(calls, [
+    [1, undefined, 'create', ['a'], obj],
+    [2, undefined, 'create', ['b'], obj],
+    [{c: 3}, 1, 'change', ['a'], obj],
+    [3, undefined, 'create', ['a', 'c'], obj],
+
+    [{x:{y:{z:69}}}, {c:3}, 'change', ['a'], obj],
+    [{y:{z:69}}, undefined, 'create', ['a', 'x'], obj],
+    [{z:69}, undefined, 'create', ['a', 'x', 'y'], obj],
+    [42, undefined, 'create', ['a', 'x', 'y', 'z'], obj],
+    [undefined, 3, 'delete', ['a', 'c'], obj],
+    [69, 42, 'change', ['a', 'x', 'y', 'z'], obj],
+    [undefined, 69, 'delete', ['a', 'x', 'y', 'z'], obj],
+    [undefined, {z:69}, 'delete', ['a', 'x', 'y'], obj],
+    [undefined, {y:{z:69}}, 'delete', ['a', 'x'], obj],
+    [undefined, {x:{y:{z:69}}}, 'delete', ['a'], obj],
+  ])
+
+  t.end()
+})
+
+test('removePrefixListener', (t) => {
+  const obj = objerve()
+  const {calls, f} = callLog()
+  objerve.addPrefixListener(obj, [], f)
+
+  obj.x = 'x'
+  objerve.removePrefixListener(obj, [], f)
+  obj.x = 'y'
+
+  t.deepEqual(calls, [
+    ['x', undefined, 'create', ['x'], obj],
+  ])
+  t.end()
+})
