@@ -30,7 +30,6 @@ const proxy = (obj, rootArg, path=[]) => {
     set: (o, key, value) => {
       let localPath = path.concat([key])
       value = proxy(value, root, localPath)
-      let actionName = key in o ? 'change' : 'create'
       let oldValue = o[key]
 
       if (o instanceof Array) {
@@ -49,7 +48,7 @@ const proxy = (obj, rootArg, path=[]) => {
         arrayLengthCache.set(o, o.length)
       }
 
-      const args = [root, actionName, localPath, oldValue, value]
+      const args = [root, 'set', localPath, oldValue, value]
 
       update(...args)
       Reflect.set(o, key, value)
@@ -88,6 +87,16 @@ const listenersForRoot = new WeakMap()
 const callListeners = (root, action,
     listenerPath, propertyPath, oldValue, newValue) => {
   debug({root, action, listenerPath, propertyPath, oldValue, newValue})
+
+  if (action === 'set') {
+    if (hasPath(root, propertyPath)) {
+      // Have it previously
+      action = 'change'
+    } else {
+      action = 'create'
+    }
+  }
+
   const pathListeners = listenersForRoot.get(root)
   if (pathListeners.has(listenerPath)) {
     for (const listener of pathListeners.get(listenerPath)) {
@@ -201,6 +210,24 @@ const getAllMatchingPaths = (obj, akmap, pathPrefix, sortOrder, listenerPathPref
   }
 }
 
+const hasPath = (obj, path) => {
+  if (!isObjectOrArray(obj)) return false
+  switch (path.length) {
+    case 0:
+      return true
+    case 1:
+      return path[0] in obj
+    default:
+      let [head, ...rest] = path
+      // The path is an array of keys to be used sequentially as properties
+      if (head in obj) {
+        return hasPath(obj[head], rest)
+      } else {
+        return false
+      }
+  }
+}
+
 const getPath = (obj, path) => {
   switch (path.length) {
     case 0:
@@ -253,7 +280,7 @@ const update = (root, action, path, oldValue, newValue) => {
       newValue, pathListeners, path, SORT.TRUNK_FIRST)
     for (const {listenerPath, propertyPath} of matchingPaths) {
       const pathRelative = propertyPath.slice(path.length)
-      callListeners(root, 'create', listenerPath, propertyPath,
+      callListeners(root, action, listenerPath, propertyPath,
         getPath(root, propertyPath),
         getPath(newValue, pathRelative))
     }
@@ -287,7 +314,7 @@ const update = (root, action, path, oldValue, newValue) => {
       for (const {listenerPath, propertyPath} of matchingPaths) {
         const pathRelative = propertyPath.slice(path.length)
         if (pathRelative.length === 0) continue
-        callListeners(root, 'create', listenerPath, propertyPath,
+        callListeners(root, 'set', listenerPath, propertyPath,
           getPath(root, propertyPath),
           getPath(added, pathRelative))
       }
@@ -300,7 +327,7 @@ const update = (root, action, path, oldValue, newValue) => {
       for (const {listenerPath, propertyPath} of matchingPaths) {
         const pathRelative = propertyPath.slice(path.length)
         if (pathRelative.length === 0) continue
-        callListeners(root, 'change', listenerPath, propertyPath,
+        callListeners(root, 'set', listenerPath, propertyPath,
           getPath(root, propertyPath),
           getPath(updated, pathRelative))
       }
@@ -326,14 +353,25 @@ const update = (root, action, path, oldValue, newValue) => {
           callListeners(root, 'delete', listenerPath, propertyPath,
             getPath(root, propertyPath),
             undefined)
-      }
+        }
 
       }
     })()
 
-    // In case there is a listener specifically for this path that now
-    // contains an object that is being reassigned, let's call that too.
-    callListeners(root, 'change', path, path, oldValue, newValue)
+    ;(() => {
+      // In case there is a listener specifically for this path that now
+      // contains an object that is being reassigned, let's call that too.
+
+      const matchingPaths = generalisePath(path).map((x) => {
+        return { listenerPath: x, propertyPath: path }
+      })
+      for (const {listenerPath, propertyPath} of matchingPaths) {
+        callListeners(root, action, listenerPath, propertyPath,
+          oldValue,
+          newValue)
+      }
+    })()
+
   }
 }
 
