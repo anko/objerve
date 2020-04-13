@@ -11,17 +11,22 @@ const proxy = (obj, rootArg, path=[]) => {
   // Primitive values can't have properties, so need no wrapper.
   if (!isObjectOrArray(obj)) return obj
 
-  // If the value is already a proxy, we're done.  (This happens if a proxy
-  // object was created and then set as a property value for us.)
+  // If the value is a proxy, subscribe to changes on that object, and call
+  // appropriately edited updates on us when paths on it change.  Also
+  // subscribe to this property on ourselves, so if it changes to point to some
+  // other value, we clean up both listeners.
   if (rootOfProxy.has(obj)) {
-    // Subscribe to changes on that object, and call updates on us when paths
-    // on it change.  Also subscribe to this property on ourselves, so if it
-    // changes to point to some other value, we clean up both listeners.
     const subRoot = rootOfProxy.get(obj)
     const subPath = pathOfProxy.get(obj)
     const prefixListener = (newValue, oldValue, action, changePath, obj) => {
       changePath = changePath.slice(subPath.length)
-      update(rootArg, action, path.concat(changePath), oldValue, newValue)
+      const finalPath = path.concat(changePath)
+      if (newValue === rootArg) {
+        // This is a circular reference.  It'll already have called its
+        // updates, so we'll cut here to avoid looping infinitely.
+        return
+      }
+      update(rootArg, action, finalPath, oldValue, newValue)
     }
     addPrefixListener(subRoot, [], prefixListener)
 
@@ -444,6 +449,10 @@ const update = (root, action, path, oldValue, newValue) => {
 const wrapperOfCallback = new WeakMap()
 
 const addListener = (obj, path, func) => {
+  if (!rootOfProxy.has(obj)) {
+    throw TypeError(`Not an objerve instance: ${JSON.stringify(obj)}`)
+  }
+
   // Convert path elements to strings for internal consistency.  A string that
   // looks like a number is equivalent to that number when used as a property
   // name, and we use this representation.

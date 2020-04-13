@@ -1,8 +1,10 @@
 # objerve
 
-Define callbacks listening for changes inside given object paths.  Supports
-path prefixes, array index wildcards, nested instances, and [calls your
-listeners in a smart order](#call-order).
+Define callbacks listening for changes inside given object paths.
+
+Supports path prefixes, [array index wildcard](#objerveeach), (circular)
+references between instances, and [nesting-respecting callback
+order](#call-order).
 
 # example
 
@@ -83,9 +85,8 @@ array index.
 When one change triggers multiple callbacks, they are called in increasing
 order of specificity (root→leaf) when the change is a property creation or
 change, and in decreasing order of specificity (leaf→root) when the change is a
-deletion.  This maintains correct nesting order, so if your listeners further
-out want to setup or teardown state that is used by listeners further in, they
-can do so.
+deletion.  This maintains correct nesting order, so your listeners further out
+can setup or teardown state that is then used by listeners further in.
 
 <details><summary>Example</summary>
 

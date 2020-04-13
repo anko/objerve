@@ -590,3 +590,46 @@ test('addListener to subproperty', (t) => {
   ])
   t.end()
 })
+
+test('circular reference', (t) => {
+  const obj = objerve()
+  const {calls, f} = callLog()
+  obj.a = obj
+  objerve.addListener(obj.a.a.a.a.a.a.a.a.a, ['a'], f)
+  obj.a = obj
+
+  t.deepEqual(calls, [
+    [obj, obj, 'change', ['a'], obj],
+  ])
+  t.end()
+})
+
+test('circular reference over 2 objerve instances', (t) => {
+  const obj1 = objerve()
+  const obj2 = objerve()
+  const {calls, f} = callLog()
+  obj1.a = obj2
+  objerve.addListener(obj1.a, ['b'], f)
+  obj2.b = obj1
+
+  t.deepEqual(calls, [
+    [obj1, undefined, 'create', ['b'], obj2],
+  ])
+  t.end()
+})
+
+test('circular reference over 3 objerve instances', (t) => {
+  const obj1 = objerve()
+  const obj2 = objerve()
+  const obj3 = objerve()
+  const {calls, f} = callLog()
+  obj1.a = obj2
+  obj2.b = obj3
+  objerve.addListener(obj3, ['c', 'a', 'b'], f)
+  obj3.c = obj1
+
+  t.deepEqual(calls, [
+    [obj3, undefined, 'create', ['c', 'a', 'b'], obj3],
+  ])
+  t.end()
+})
