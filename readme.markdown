@@ -1,10 +1,6 @@
 # objerve
 
-Define callbacks listening for changes inside given object paths.
-
-Supports path prefixes, [array index wildcard](#objerveeach), (circular)
-references between instances, and [nesting-respecting callback
-order](#call-order).
+Define callbacks that get fired when given object properties change.
 
 # example
 
@@ -34,6 +30,18 @@ obj.a = null
 > delete a.b: "hello" -> undefined
 > ```
 
+# features
+
+ - Behaves exactly like an ordinary Object, but fires callbacks
+ - Can listen to fixed paths, or path prefixes
+ - Can use an [array index wildcard](#objerveeach) in paths, which matches any
+   array index
+ - Putting parts of objerve instances inside each other works, even with
+   circular references
+ - Can tell apart `undefined` property value and property deletion
+ - [The order in which callbacks are called](#call-order) respects nesting
+   level
+
 # api
 
 ## `objerve([obj])`
@@ -49,9 +57,9 @@ be listened to with `objerve.addListener`.
 The path can contain `objerve.each`, which will match any Array index at that
 position.
 
-Works inside listener callbacks.  If you add a listener for the same path
-inside a callback for that path, the new listener will also be called with the
-same change.
+Works inside listener callbacks.  If inside a listener you add a new listener
+that matches the same path, the new listener will also be called with this same
+change.
 
 ## `objerve.removeListener(obj, path, callback)`
 
@@ -63,7 +71,7 @@ Does nothing if it cannot find such a listener.
 
 Works inside listener callbacks.  If you remove a listener for the same path
 inside a callback for that path, the removed listener won't be called for that
-change either (unless it was already called before you).
+change either (unless it was already called before this one).
 
 ## `objerve.addPrefixListener(obj, path, callback)`
 
@@ -79,6 +87,60 @@ Same as `removeListener`, but for prefix listeners.
 
 A special Symbol value that can be passed as part of a path.  It matches any
 array index.
+
+# callback arguments
+
+Your callback function is called with these arguments:
+
+ - `newValue`
+ - `oldValue`
+ - `change`: contains one of the following:
+   - `'create'` if the property did not previously exist, and now does
+   - `'change'` if the property also previously existed
+   - `'delete'` if the property stopped existing
+ - `path`: contains an Array representing the property path through the object
+   at which this update happened
+ - `obj`: contains a reference to the object as it currently exists (just
+   before the described update is actually applied)
+
+If your listener changes the property it's listening to, it'll be called again
+with the new value, but the same action type.
+
+<details><summary>Example: listener changing its own property</summary>
+
+<!-- !test in re-call -->
+```js
+const objerve = require('./main.js')
+const obj = objerve()
+
+const callback = (val, previousVal, action) => {
+  console.log(`[${action}] ${previousVal} -> ${val}`)
+  if (val > 0) {
+    obj.a = val - 1
+  }
+}
+
+objerve.addListener(obj, ['a'], callback)
+obj.a = 3
+console.log(obj.a)
+obj.a = 2
+console.log(obj.a)
+```
+
+<!-- !test out re-call -->
+
+> ```
+> [create] undefined -> 3
+> [create] undefined -> 2
+> [create] undefined -> 1
+> [create] undefined -> 0
+> 0
+> [change] 0 -> 2
+> [change] 0 -> 1
+> [change] 0 -> 0
+> 0
+> ```
+</details>
 
 # call order
 

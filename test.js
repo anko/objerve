@@ -4,8 +4,8 @@ const test = require('tape')
 const callLog = (userF) => {
   const calls = []
   const f = function () {
-    if (userF) { userF(...arguments) }
     calls.push(Array.from(arguments))
+    if (userF) { userF(...arguments) }
   }
   return { f, calls }
 }
@@ -631,5 +631,40 @@ test('circular reference over 3 objerve instances', (t) => {
   t.deepEqual(calls, [
     [obj3, undefined, 'create', ['c', 'a', 'b'], obj3],
   ])
+  t.end()
+})
+
+test('updates caused by assignment all appear as same', (t) => {
+  const obj = objerve()
+  const {calls: calls1, f: f1} = callLog((newValue) => {
+    if (newValue > 0) {
+      obj.b = newValue - 1
+    }
+  })
+  const {calls: calls2, f: f2} = callLog((newValue) => {
+    if (newValue > 0) {
+      obj.a = newValue - 1
+    }
+  })
+  objerve.addListener(obj, ['a'], f1)
+  objerve.addListener(obj, ['b'], f2)
+
+  obj.a = 3
+  t.equals(obj.a, 1)
+  t.equals(obj.b, 0)
+
+  t.deepEqual(calls1, [
+    [3, undefined, 'create', ['a'], obj],
+    [1, undefined, 'create', ['a'], obj],
+  ])
+  t.deepEqual(calls2, [
+    [2, undefined, 'create', ['b'], obj],
+    [0, undefined, 'create', ['b'], obj],
+  ])
+
+  obj.a = 3
+  t.equals(obj.a, 1)
+  t.equals(obj.b, 0)
+
   t.end()
 })

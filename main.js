@@ -59,6 +59,12 @@ const proxy = (obj, rootArg, path=[]) => {
   // using that as the 'oldValue' next time a length 'set' comes along.
   const arrayLengthCache = new WeakMap()
 
+  // If a user callback modifies the path, we want to give it priority, and not
+  // overwrite its value immediately after.  This Map tracks what paths proxies
+  // were called for during a particular 'update' run.
+  const proxyHitCache = new Map()
+  let nextId = 0
+
   const node = new Proxy(obj, {
     set: (o, key, value) => {
       let localPath = path.concat([key])
@@ -81,10 +87,29 @@ const proxy = (obj, rootArg, path=[]) => {
         arrayLengthCache.set(o, o.length)
       }
 
-      const args = [root, 'set', localPath, oldValue, value]
+      // For all caches that are running, note that this path was modified.
+      for (let v of proxyHitCache.values()) { v.set(localPath, true) }
 
+      // Make our own cache to track what paths get modified
+      const id = nextId++
+      proxyHitCache.set(id, akm())
+      // TODO
+      // TODO do this also for deletes, and length stuff above
+      // TODO
+
+      // Call update (which possibly runs user callbacks)
+      const args = [root, 'set', localPath, oldValue, value]
       update(...args)
-      Reflect.set(o, key, value)
+
+      // If this path wasn't touched, then actually set the value.  If it was
+      // touched, don't set anything; user code will have set it to what it
+      // needs to be.
+      if (!proxyHitCache.get(id).has(localPath))
+        Reflect.set(o, key, value)
+
+      // Clear our cache
+      proxyHitCache.delete(id)
+
       return true // Indicate success
     },
     deleteProperty: (o, key) => {
