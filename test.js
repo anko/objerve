@@ -10,6 +10,33 @@ const callLog = (userF) => {
   return { f, calls }
 }
 
+const callArgsEqual = (t, calls, expected) => {
+  // Check without ID arguments
+  const callsWithoutId = calls.map((args) => args.slice(0, 4))
+  const expectedWithoutId = expected.map((args) => args.slice(0, 4))
+  t.deepEqual(callsWithoutId, expectedWithoutId)
+
+  // If there are ID arguments, check that they match
+  const callIds = calls.map((args) => args[5])
+  const expectedIdArrays = expected.map((args) => args[5])
+
+  //console.log(callIds, expectedIdArrays)
+
+  for (let [i, expectedIdArray] of expectedIdArrays.entries()) {
+    if (expectedIdArray === undefined) continue
+    expectedIdArray.push(callIds[i])
+  }
+}
+const allEqual = (array) => {
+  if (array.length === 0) return true
+  let firstValue = array[0]
+  let stillEqual = true
+  for (let v of array) {
+    if (v !== firstValue) stillEqual = false
+  }
+  return stillEqual
+}
+
 test('assigned primitive', (t) => {
   const obj = objerve({})
 
@@ -21,10 +48,10 @@ test('assigned primitive', (t) => {
 
   obj.a = 3
 
-  t.deepEqual(calls_a, [
+  callArgsEqual(t, calls_a, [
     [3, undefined, 'create', ['a'], obj],
   ])
-  t.deepEqual(calls_empty, [])
+  callArgsEqual(t, calls_empty, [])
   t.end()
 })
 
@@ -44,7 +71,7 @@ test('assigned object', (t) => {
   // This fires 'delete'
   delete obj.a
 
-  t.deepEqual(calls_a, [
+  callArgsEqual(t, calls_a, [
     [{b: 1}, undefined, 'create', ['a'], obj],
     [{c: {test: 'ok'}}, {b: 1}, 'change', ['a'], obj],
     [undefined, {c: {test: 'ok'}}, 'delete', ['a'], obj],
@@ -61,7 +88,7 @@ test('object assigned 1 level up', (t) => {
   obj.a = {b: 1}
   obj.a = {b: 2}
 
-  t.deepEqual(calls_ab, [
+  callArgsEqual(t, calls_ab, [
     [1, undefined, 'create', ['a', 'b'], obj],
     [2, 1, 'change', ['a', 'b'], obj],
   ])
@@ -76,7 +103,7 @@ test('object assigned 2 levels up', (t) => {
 
   obj.a = {b: {c: 1}}
 
-  t.deepEqual(calls, [
+  callArgsEqual(t, calls, [
     [1, undefined, 'create', ['a', 'b', 'c'], obj],
   ])
   t.end()
@@ -92,13 +119,12 @@ test('object deleted from under us', (t) => {
 
   obj.a.b = null
 
-  t.deepEqual(calls, [
+  callArgsEqual(t, calls, [
     [1, undefined, 'create', ['a', 'b', 'c'], obj],
     [undefined, 1, 'delete', ['a', 'b', 'c'], obj],
   ])
   t.end()
 })
-
 
 test('still object, but properties reassigned', (t) => {
   const obj = objerve({})
@@ -127,16 +153,16 @@ test('still object, but properties reassigned', (t) => {
     // delete c
   }
 
-  t.deepEqual(calls_aa, [
+  callArgsEqual(t, calls_aa, [
     [true, undefined, 'create', ['a', 'a'], obj],
   ])
 
-  t.deepEqual(calls_ab, [
+  callArgsEqual(t, calls_ab, [
     [true, undefined, 'create', ['a', 'b'], obj],
     ['something else', true, 'change', ['a', 'b'], obj],
   ])
 
-  t.deepEqual(calls_ac, [
+  callArgsEqual(t, calls_ac, [
     [true, undefined, 'create', ['a', 'c'], obj],
     [undefined, true, 'delete', ['a', 'c'], obj],
   ])
@@ -156,7 +182,7 @@ test('trunk and leaf call order', (t) => {
 
   // For additions, trunk is called before leaf.
   // For deletions, leaf is called before trunk.
-  t.deepEqual(calls, [
+  callArgsEqual(t, calls, [
     [{b: false}, undefined, 'create', ['a'], obj],
     [true, undefined, 'create', ['a', 'b'], obj],
     [false, true, 'change', ['a', 'b'], obj],
@@ -179,7 +205,7 @@ test('trunk and leaf call order when object-diffed', (t) => {
 
   // For additions, trunk is called before leaf.
   // For deletions, leaf is called before trunk.
-  t.deepEqual(calls, [
+  callArgsEqual(t, calls, [
     [{c: true}, undefined, 'create', ['a', 'b'], obj],
     [true, undefined, 'create', ['a', 'b', 'c'], obj],
     [{c: false}, {c: true}, 'change', ['a', 'b'], obj],
@@ -200,7 +226,7 @@ test('removeListener', (t) => {
   objerve.removeListener(obj, ['a'], f)
   delete obj.a
 
-  t.deepEqual(calls, [
+  callArgsEqual(t, calls, [
     [1, undefined, 'create', ['a'], obj],
   ])
   t.end()
@@ -222,7 +248,7 @@ test('removeListener called from a listener for same path listener', (t) => {
   obj.a = 1
 
   // It's gone before it's called!
-  t.deepEqual(calls, [])
+  callArgsEqual(t, calls, [])
   t.end()
 })
 
@@ -239,7 +265,7 @@ test('addListener called from a listener for same path', (t) => {
   obj.a = 1
 
   // It gets called!
-  t.deepEqual(calls, [
+  callArgsEqual(t, calls, [
     [1, undefined, 'create', ['a'], obj]
   ])
   t.end()
@@ -278,7 +304,7 @@ test('adding listener for same level relative path inside listener', (t) => {
   obj.a = {before: 1, main: 2, after: 3}
   delete obj.a
 
-  t.deepEqual(calls, [
+  callArgsEqual(t, calls, [
     [2, undefined, 'create', ['a', 'main'], obj],
     [undefined, 2, 'delete', ['a', 'main'], obj],
   ])
@@ -286,14 +312,14 @@ test('adding listener for same level relative path inside listener', (t) => {
   // came into existence when obj.a = {...} fired obj.a.main's listener.  For
   // deletion, obj.a.before's listener had already been called by the time that
   // obj.a.main's listener removed it, because it's earlier in iteration order.
-  t.deepEqual(callsBefore, [
+  callArgsEqual(t, callsBefore, [
     [undefined, 1, 'delete', ['a', 'before'], obj],
   ])
   // For creation, the obj.a.after listener wasn't called, because it only came
   // into existence when obj.a = {...} fired obj.a.main's listener.  For
   // deletion, obj.a.after's listener also wasn't called, because obj.a.main's
   // listener was called first, which removed it.
-  t.deepEqual(callsAfter, [])
+  callArgsEqual(t, callsAfter, [])
   t.end()
 })
 
@@ -311,7 +337,7 @@ test('property with undefined as value', (t) => {
 
   // The action argument can be used to distinguish between 'undefined' being
   // assigned as a value and just being there because the property was deleted.
-  t.deepEqual(calls, [
+  callArgsEqual(t, calls, [
     [undefined, undefined, 'create', ['a'], obj],
     [undefined, undefined, 'change', ['a'], obj],
     [undefined, undefined, 'delete', ['a'], obj],
@@ -331,7 +357,7 @@ test('[each]', (t) => {
   obj.a = ['zero', 'one']
   obj.a = ['one']
 
-  t.deepEqual(calls, [
+  callArgsEqual(t, calls, [
     ['zero', undefined, 'create', ['a', 0], obj],
     ['one', undefined, 'create', ['a', 1], obj],
     ['one', 'zero', 'change', ['a', 0], obj],
@@ -350,7 +376,7 @@ test('[each] -> something else', (t) => {
   obj.a = [{x: 'hi'}]
   obj.a.push({x: 'hello'})
 
-  t.deepEqual(calls, [
+  callArgsEqual(t, calls, [
     ['hi', undefined, 'create', ['a', 0, 'x'], obj],
     ['hello', undefined, 'create', ['a', 1, 'x'], obj],
   ])
@@ -368,7 +394,7 @@ test('bare [each]', (t) => {
   obj.push('hi')
   obj.length = 1 // Truncate off one of them
 
-  t.deepEqual(calls, [
+  callArgsEqual(t, calls, [
     ['hi', undefined, 'create', [0], obj],
     ['hi', undefined, 'create', [1], obj],
     [undefined, 'hi', 'delete', [1], obj],
@@ -389,7 +415,7 @@ test('[each] getting truncated respects nesting order', (t) => {
   obj.a.push('hi')
   delete obj.a
 
-  t.deepEqual(calls, [
+  callArgsEqual(t, calls, [
     [['hi', 'hi'], undefined, 'create', ['a'], obj],
     ['hi', undefined, 'create', ['a', 0], obj],
     ['hi', undefined, 'create', ['a', 1], obj],
@@ -412,7 +438,7 @@ test('listening for array length property', (t) => {
   obj.length = 0
   obj.length = 3
 
-  t.deepEqual(calls, [
+  callArgsEqual(t, calls, [
     [1, 0, 'change', ['length'], obj],
     [2, 1, 'change', ['length'], obj],
     [0, 2, 'change', ['length'], obj],
@@ -436,13 +462,18 @@ test('multiple [each]es and indexes all get called', (t) => {
   delete obj.a
 
   // Both get called the same way
-  t.deepEqual(calls_e_e, [
+  callArgsEqual(t, calls_e_e, [
     ['x', undefined, 'create', ['a', 0, 0], obj],
     ['y', undefined, 'create', ['a', 1, 0], obj],
     [undefined, 'x', 'delete', ['a', 0, 0], obj],
     [undefined, 'y', 'delete', ['a', 1, 0], obj],
   ])
-  t.deepEqual(calls_e_0, calls_e_e)
+  callArgsEqual(t, calls_e_0, [
+    ['x', undefined, 'create', ['a', 0, 0], obj],
+    ['y', undefined, 'create', ['a', 1, 0], obj],
+    [undefined, 'x', 'delete', ['a', 0, 0], obj],
+    [undefined, 'y', 'delete', ['a', 1, 0], obj],
+  ])
 
   t.end()
 })
@@ -462,7 +493,7 @@ test('prefix listener', (t) => {
   obj.a.x.y.z = 69
   delete obj.a
 
-  t.deepEqual(calls, [
+  callArgsEqual(t, calls, [
     [1, undefined, 'create', ['a'], obj],
     [2, undefined, 'create', ['b'], obj],
     [{c: 3}, 1, 'change', ['a'], obj],
@@ -492,7 +523,7 @@ test('removePrefixListener', (t) => {
   objerve.removePrefixListener(obj, [], f)
   obj.x = 'y'
 
-  t.deepEqual(calls, [
+  callArgsEqual(t, calls, [
     ['x', undefined, 'create', ['x'], obj],
   ])
   t.end()
@@ -509,7 +540,7 @@ test('generic listener call order respects nesting', (t) => {
   obj[0] = 'y'
   delete obj[0]
 
-  t.deepEqual(which, [
+  t.deepEquals(which, [
     'prefix', 'each', 'index',
     'prefix', 'each', 'index',
     'index', 'each', 'prefix'
@@ -537,13 +568,13 @@ test('objerve instance as property of another', (t) => {
   obj1.a.b = 'test 1'
   obj2.b = 'test 2'
 
-  t.deepEqual(calls1, [
+  callArgsEqual(t, calls1, [
     [true, undefined, 'create', ['a', 'b'], obj1],
     [undefined, true, 'delete', ['a', 'b'], obj1],
     ["test 1", undefined, 'create', ['a', 'b'], obj1],
   ])
 
-  t.deepEqual(calls2, [
+  callArgsEqual(t, calls2, [
     [true, undefined, 'create', ['b'], obj2],
     [undefined, true, 'delete', ['b'], obj2],
     ['test 2', undefined, 'create', ['b'], obj2],
@@ -566,12 +597,12 @@ test('objerve instance property passed as property', (t) => {
 
   delete obj2.x.b
 
-  t.deepEqual(calls1, [
+  callArgsEqual(t, calls1, [
     [true, undefined, 'create', ['a', 'b'], obj1],
     [undefined, true, 'delete', ['a', 'b'], obj1],
   ])
 
-  t.deepEqual(calls2, [
+  callArgsEqual(t, calls2, [
     [true, undefined, 'create', ['x', 'b'], obj2],
     [undefined, true, 'delete', ['x', 'b'], obj2],
   ])
@@ -585,7 +616,7 @@ test('addListener to subproperty', (t) => {
   objerve.addListener(obj.a, ['b'], f)
   obj.a.b = false
 
-  t.deepEqual(calls, [
+  callArgsEqual(t, calls, [
     [false, true, 'change', ['b'], obj.a],
   ])
   t.end()
@@ -598,7 +629,7 @@ test('circular reference', (t) => {
   objerve.addListener(obj.a.a.a.a.a.a.a.a.a, ['a'], f)
   obj.a = obj
 
-  t.deepEqual(calls, [
+  callArgsEqual(t, calls, [
     [obj, obj, 'change', ['a'], obj],
   ])
   t.end()
@@ -612,7 +643,7 @@ test('circular reference over 2 objerve instances', (t) => {
   objerve.addListener(obj1.a, ['b'], f)
   obj2.b = obj1
 
-  t.deepEqual(calls, [
+  callArgsEqual(t, calls, [
     [obj1, undefined, 'create', ['b'], obj2],
   ])
   t.end()
@@ -628,13 +659,13 @@ test('circular reference over 3 objerve instances', (t) => {
   objerve.addListener(obj3, ['c', 'a', 'b'], f)
   obj3.c = obj1
 
-  t.deepEqual(calls, [
+  callArgsEqual(t, calls, [
     [obj3, undefined, 'create', ['c', 'a', 'b'], obj3],
   ])
   t.end()
 })
 
-test('updates caused by assignment all appear as same', (t) => {
+test('updates caused by assignment in listener get same update id', (t) => {
   const obj = objerve()
   const {calls: calls1, f: f1} = callLog((newValue) => {
     if (newValue > 0) {
@@ -653,18 +684,39 @@ test('updates caused by assignment all appear as same', (t) => {
   t.equals(obj.a, 1)
   t.equals(obj.b, 0)
 
-  t.deepEqual(calls1, [
-    [3, undefined, 'create', ['a'], obj],
-    [1, undefined, 'create', ['a'], obj],
+  const shouldBeSame1 = []
+  const shouldBeSame2 = []
+  callArgsEqual(t, calls1, [
+    [3, undefined, 'create', ['a'], obj, shouldBeSame1],
+    [1, undefined, 'create', ['a'], obj, shouldBeSame1],
   ])
-  t.deepEqual(calls2, [
-    [2, undefined, 'create', ['b'], obj],
-    [0, undefined, 'create', ['b'], obj],
+  callArgsEqual(t, calls2, [
+    [2, undefined, 'create', ['b'], obj, shouldBeSame1],
+    [0, undefined, 'create', ['b'], obj, shouldBeSame1],
   ])
+  t.ok(allEqual(shouldBeSame1),
+    `same update id ${JSON.stringify(shouldBeSame1)}`)
 
   obj.a = 3
   t.equals(obj.a, 1)
   t.equals(obj.b, 0)
+
+  callArgsEqual(t, calls1, [
+    [3, undefined, 'create', ['a'], obj, shouldBeSame1],
+    [1, undefined, 'create', ['a'], obj, shouldBeSame1],
+    [3, 1, 'change', ['a'], obj, shouldBeSame2],
+    [1, 1, 'change', ['a'], obj, shouldBeSame2],
+  ])
+  callArgsEqual(t, calls2, [
+    [2, undefined, 'create', ['b'], obj, shouldBeSame1],
+    [0, undefined, 'create', ['b'], obj, shouldBeSame1],
+    [2, 0, 'change', ['b'], obj, shouldBeSame2],
+    [0, 0, 'change', ['b'], obj, shouldBeSame2],
+  ])
+  t.ok(allEqual(shouldBeSame1),
+    `same update id ${JSON.stringify(shouldBeSame1)}`)
+  t.ok(allEqual(shouldBeSame2),
+    `same update id ${JSON.stringify(shouldBeSame2)}`)
 
   t.end()
 })

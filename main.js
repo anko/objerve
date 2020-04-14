@@ -7,6 +7,9 @@ debug['active'] = console.log
 const rootOfProxy = new WeakMap()
 const pathOfProxy = new WeakMap()
 
+let nextUpdateId = 0
+let ongoingUpdateId = null
+
 const proxy = (obj, rootArg, path=[]) => {
   // Primitive values can't have properties, so need no wrapper.
   if (!isObjectOrArray(obj)) return obj
@@ -147,7 +150,6 @@ const listenersForRoot = new WeakMap()
 
 const callListeners = (root, action,
     listenerPath, propertyPath, oldValue, newValue) => {
-  debug({root, action, listenerPath, propertyPath, oldValue, newValue})
 
   if (action === 'set') {
     if (hasPath(root, propertyPath)) {
@@ -162,9 +164,22 @@ const callListeners = (root, action,
 
   const pathListeners = listenersForRoot.get(root)
   if (pathListeners.has(listenerPath)) {
-    for (const listener of pathListeners.get(listenerPath)) {
-      listener(newValue, oldValue, action, propertyPath, root)
+
+    let updateId
+    if (ongoingUpdateId !== null) {
+      updateId = ongoingUpdateId
+    } else {
+      updateId = nextUpdateId++
+      ongoingUpdateId = updateId
     }
+
+    debug({root, action, listenerPath, propertyPath,
+      oldValue, newValue, updateId})
+
+    for (const listener of pathListeners.get(listenerPath)) {
+      listener(newValue, oldValue, action, propertyPath, root, updateId)
+    }
+    ongoingUpdateId = null
   }
 }
 
@@ -492,10 +507,11 @@ const addListener = (obj, path, func) => {
   // to the subproperty object that they called addListener on.
   const root = rootOfProxy.get(obj)
   const subPath = pathOfProxy.get(obj)
-  const wrapperFunction = (newVal, oldVal, action, path, objRef) => {
+  const wrapperFunction = (newVal, oldVal, action, path, objRef, updateId) => {
     func(newVal, oldVal, action,
       path.slice(subPath.length),
-      getPath(objRef, subPath))
+      getPath(objRef, subPath),
+      updateId)
   }
   wrapperOfCallback.set(func, wrapperFunction)
 

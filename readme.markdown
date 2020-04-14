@@ -99,28 +99,28 @@ Your callback function is called with these arguments:
    - `'change'` if the property also previously existed
    - `'delete'` if the property stopped existing
  - `path`: contains an Array representing the property path through the object
-   at which this update happened
+   at which this update happened.
  - `obj`: contains a reference to the object as it currently exists (just
-   before the described update is actually applied)
+   before the described update is actually applied).
+ - `callId`: contains the index of the currently happening change callback.
+   Always a new larger number with every call, except if your listener itself
+   changes the object; updates caused by that change have the same update ID.
 
-If your listener changes the property it's listening to, it'll be called again
-with the new value, but the same action type.
-
-<details><summary>Example: listener changing its own property</summary>
+<details><summary>Example: listener setting a property, triggering itself again</summary>
 
 <!-- !test in re-call -->
 ```js
 const objerve = require('./main.js')
 const obj = objerve()
 
-const callback = (val, previousVal, action) => {
-  console.log(`[${action}] ${previousVal} -> ${val}`)
-  if (val > 0) {
-    obj.a = val - 1
-  }
-}
+objerve.addListener(obj, ['a'],
+  (val, previousVal, action, path, objRef, callId) => {
+    console.log(`[${action}] ${previousVal} -> ${val} (callId ${callId})`)
+    if (val > 0) {
+      obj.a = val - 1
+    }
+  })
 
-objerve.addListener(obj, ['a'], callback)
 obj.a = 3
 console.log(obj.a)
 obj.a = 2
@@ -130,16 +130,25 @@ console.log(obj.a)
 <!-- !test out re-call -->
 
 > ```
-> [create] undefined -> 3
-> [create] undefined -> 2
-> [create] undefined -> 1
-> [create] undefined -> 0
+> [create] undefined -> 3 (callId 0)
+> [create] undefined -> 2 (callId 0)
+> [create] undefined -> 1 (callId 0)
+> [create] undefined -> 0 (callId 0)
 > 0
-> [change] 0 -> 2
-> [change] 0 -> 1
-> [change] 0 -> 0
+> [change] 0 -> 2 (callId 1)
+> [change] 0 -> 1 (callId 1)
+> [change] 0 -> 0 (callId 1)
 > 0
 > ```
+
+Note that `action` and `previousVal` are the same in each recursive callback
+call.  If you only want to only trigger some action for the final one, maintain
+your own state of the latest update your listener got, and call on a later tick
+with event loop tick with whatever deferring API is appropriate for your
+use-case ([`setImmediate`][setImmediate],
+[`process.nextTick`][processNextTick], [`queueMicrotask`][queueMicrotask],
+`requestAnimationFrame`][requestAnimationFrame], etc).
+
 </details>
 
 # call order
@@ -224,3 +233,8 @@ Callback order is not otherwise specified.
  - Binding data to UI components.
  - Testing.  Transparently add logging to property changes on objects.
  - Creating objects that react to their own paths changing
+
+[setImmediate]: https://developer.mozilla.org/en-US/docs/Web/API/Window/setImmediate
+[processNextTick]: https://nodejs.org/api/process.html#process_process_nexttick_callback_args
+[queueMicrotask]: https://developer.mozilla.org/en-US/docs/Web/API/WindowOrWorkerGlobalScope/queueMicrotask
+[requestAnimationFrame]: https://developer.mozilla.org/en-US/docs/Web/API/window/requestAnimationFrame
