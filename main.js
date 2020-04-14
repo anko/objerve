@@ -354,7 +354,6 @@ const update = (root, action, path, oldValue, newValue) => {
         getPath(root, propertyPath),
         getPath(newValue, pathRelative))
     }
-    // TODO and also call for new value??
 
   } else if (!oldIsPrimitive && newIsPrimitive) {
     if (DEBUG_UPDATE_STRATEGY)
