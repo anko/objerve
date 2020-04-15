@@ -88,7 +88,7 @@ Same as `removeListener`, but for prefix listeners.
 A special Symbol value that can be passed as part of a path.  It matches any
 array index.
 
-# callback arguments
+# how callbacks are called
 
 Your callback function is called with these arguments:
 
@@ -106,48 +106,91 @@ Your callback function is called with these arguments:
    All listenrs called by the same change (or that are recursively caused by a
    callback) see the same identifier.
 
-<details><summary>Example: listener setting a property, triggering itself again</summary>
+   <details><summary>Example: listener setting a property, recursively triggering itself</summary>
 
-<!-- !test in re-call -->
+   <!-- !test in re-call -->
+   ```js
+   const objerve = require('./main.js')
+   const obj = objerve()
+
+   objerve.addListener(obj, ['a'],
+     (val, previousVal, action, path, objRef, updateId) => {
+       console.log(`[${action}] ${previousVal} -> ${val} (updateId ${updateId})`)
+       if (val > 0) {
+         obj.a = val - 1
+       }
+     })
+
+   obj.a = 3
+   console.log(obj.a)
+   obj.a = 2
+   console.log(obj.a)
+   ```
+
+   <!-- !test out re-call -->
+
+   > ```
+   > [create] undefined -> 3 (updateId 0)
+   > [create] undefined -> 2 (updateId 0)
+   > [create] undefined -> 1 (updateId 0)
+   > [create] undefined -> 0 (updateId 0)
+   > 0
+   > [change] 0 -> 2 (updateId 1)
+   > [change] 0 -> 1 (updateId 1)
+   > [change] 0 -> 0 (updateId 1)
+   > 0
+   > ```
+
+   </details>
+
+Note that your callback is called for every change, even if new changes
+essentially invalidate old ones by overwriting values.  This may be inefficient
+for some use-cases (such as for UI updates), so you may wish to accumulate all
+changes that happened in one event loop tick, and defer your rendering with
+whatever API is appropriate for your use-case ([`setImmediate`][setImmediate],
+[`process.nextTick`][processNextTick], [`queueMicrotask`][queueMicrotask],
+`requestAnimationFrame`][requestAnimationFrame], etc).
+
+<details><summary>Example:  Using <code>process.nextTick</code> to defer rendering</summary>
+
+<!-- !test in defer -->
+
 ```js
 const objerve = require('./main.js')
+const arrayKeyedMap = require('array-keyed-map')
+
 const obj = objerve()
+const accumulatedChanges = arrayKeyedMap()
+
+const render = () => {
+  // Put your expensive UI rendering code here
+  console.log(Array.from(accumulatedChanges.entries()))
+}
 
 objerve.addListener(obj, ['a'],
-  (val, previousVal, action, path, objRef, updateId) => {
-    console.log(`[${action}] ${previousVal} -> ${val} (updateId ${updateId})`)
-    if (val > 0) {
-      obj.a = val - 1
+  (newVal, oldVal, action, path) => {
+    if (accumulatedChanges.size === 0) process.nextTick(render)
+    if (!accumulatedChanges.has(path)) {
+      accumulatedChanges.set(path, {newVal, oldVal})
+    } else {
+      accumulatedChanges.get(path).newVal = newVal
     }
   })
 
-obj.a = 3
-console.log(obj.a)
+// Make a bunch of changes
+obj.a = 1
 obj.a = 2
-console.log(obj.a)
+obj.a = 3
 ```
 
-<!-- !test out re-call -->
+The `renderer` sees the total accumulated change from `undefined` to `3`, and
+none of the values the property saw between then.
 
-> ```
-> [create] undefined -> 3 (updateId 0)
-> [create] undefined -> 2 (updateId 0)
-> [create] undefined -> 1 (updateId 0)
-> [create] undefined -> 0 (updateId 0)
-> 0
-> [change] 0 -> 2 (updateId 1)
-> [change] 0 -> 1 (updateId 1)
-> [change] 0 -> 0 (updateId 1)
-> 0
-> ```
+<!-- !test out defer -->
 
-Note that `action` and `previousVal` are the same in each recursive callback
-call.  If you only want to only trigger some action for the final one, maintain
-your own state of the latest update your listener got, and call on a later tick
-with event loop tick with whatever deferring API is appropriate for your
-use-case ([`setImmediate`][setImmediate],
-[`process.nextTick`][processNextTick], [`queueMicrotask`][queueMicrotask],
-`requestAnimationFrame`][requestAnimationFrame], etc).
+```
+[ [ [ 'a' ], { newVal: 3, oldVal: undefined } ] ]
+```
 
 </details>
 
@@ -159,7 +202,7 @@ change, and in decreasing order of specificity (leaf→root) when the change is 
 deletion.  This maintains correct nesting order, so your listeners further out
 can setup or teardown state that is then used by listeners further in.
 
-<details><summary>Example</summary>
+<details><summary>Example: Construction and destruction call order</summary>
 
 <!-- !test in call order -->
 ```js
@@ -189,12 +232,12 @@ delete obj.a
 > ```
 </details>
 
-The same applies if one property matches a prefix listener, `object.each`, or
-concrete property.  Prefix listeners are considered the least specific, and
-concrete properties the most specific, and they are called in root→leaf for
-creation and changes, and leaf→root for deletions.
+The same also applies if one property change triggers a prefix listener,
+`object.each`, and a concrete property.  Prefix listeners are considered the
+least specific, and concrete properties the most specific, and they too are
+called in root→leaf for creation and changes, and leaf→root for deletions.
 
-<details><summary>Example</summary>
+<details><summary>Example: Construction and destruction call order, with prefixes and <code>objerve.each</code></summary>
 
 <!-- !test in tree each call order -->
 ```js
@@ -202,13 +245,14 @@ const objerve = require('./main.js')
 const obj = objerve([])
 
 const callback = (name) => {
-  return (val, previousVal, action) => {
-    console.log(`${action} ${name}`)
-  }
+  return (val, previousVal, action) => console.log(`${action} ${name}`)
 }
 
+// Listen for property '0'
 objerve.addListener(obj, [0], callback('index'))
+// Listen for any array index
 objerve.addListener(obj, [objerve.each], callback('each'))
+// Listen for all properties
 objerve.addPrefixListener(obj, [], callback('prefix'))
 
 obj[0] = true
@@ -230,9 +274,9 @@ Callback order is not otherwise specified.
 
 # use-cases
 
- - Binding data to UI components.
- - Testing.  Transparently add logging to property changes on objects.
- - Creating objects that react to their own paths changing
+ - Binding data to UI.
+ - Testing.  Transparently adding logging to property changes is handy.
+ - Reactive programming.
 
 [setImmediate]: https://developer.mozilla.org/en-US/docs/Web/API/Window/setImmediate
 [processNextTick]: https://nodejs.org/api/process.html#process_process_nexttick_callback_args

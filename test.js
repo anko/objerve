@@ -1,5 +1,6 @@
 const objerve = require('./' + require('./package.json').main)
 const test = require('tape')
+const akm = require('array-keyed-map')
 
 const callLog = (userF) => {
   const calls = []
@@ -791,4 +792,38 @@ test('recursive callback across instances', (t) => {
   t.ok(allEqual(shouldBeSame),
     `same update id ${JSON.stringify(shouldBeSame)}`)
   t.end()
+})
+
+test('accumulate changes, defer reaction to next tick', (t) => {
+  const obj = objerve()
+
+  const changes = akm()
+  const {calls, f} = callLog((newVal, oldVal, action, path) => {
+    // On first time this callback is called this tick, set up a nextTick to
+    // handle the total results.
+    if (changes.size === 0) {
+      process.nextTick(() => {
+        const changeEntries = Array.from(changes.entries())
+        // Clearing does nothing here since we're only running this once, but
+        // if you were using this technique in practice, you'd want this.
+        changes.clear()
+        // Recorded change shows earliest oldVal, and newest newVal.
+        t.deepEqual(changeEntries, [
+          [ ['a'], {newVal: 3, oldVal: undefined}],
+        ])
+        t.end()
+      })
+    }
+    if (changes.has(path)) {
+      // Only update the newVal
+      changes.get(path).newVal = newVal
+    } else {
+      changes.set(path, {newVal, oldVal})
+    }
+  })
+
+  objerve.addListener(obj, ['a'], f)
+  obj.a = 1
+  obj.a = 2
+  obj.a = 3
 })
