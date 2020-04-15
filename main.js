@@ -4,11 +4,11 @@ const deepObjectDiff = require('deep-object-diff').detailedDiff
 const debug = () => {}
 debug['active'] = console.log
 
+const DEBUG_UPDATE_STRATEGY = false
+const DEBUG_UPDATE_ID = false
+
 const rootOfProxy = new WeakMap()
 const pathOfProxy = new WeakMap()
-
-let nextUpdateId = 0
-let ongoingUpdateId = null
 
 const proxy = (obj, rootArg, path=[]) => {
   // Primitive values can't have properties, so need no wrapper.
@@ -148,8 +148,30 @@ const proxyBase = (template={}) => {
 // root -> (path -> [function])
 const listenersForRoot = new WeakMap()
 
+// Each property update (i.e. creation, change, or deletion) gets a unique ID,
+// which is passed to all of the callbacks fired by that update.  To account
+// for recursive calls too, we hold on to an "ongoing update id" that once set
+// will apply to everything until revoked.
+const updateId = (() => {
+  let ongoingUpdateId = null
+  let nextUpdateId = 0
+
+  const get = () => {
+    if (ongoingUpdateId === null) {
+      ongoingUpdateId = nextUpdateId++
+      if (DEBUG_UPDATE_ID) console.log(`NEW update id ${ongoingUpdateId}`)
+    }
+    if (DEBUG_UPDATE_ID) console.log(`Update id ${ongoingUpdateId}`)
+    return ongoingUpdateId
+  }
+
+  const revoke = () => { ongoingUpdateId = null }
+
+  return { get, revoke }
+})()
+
 const callListeners = (root, action,
-    listenerPath, propertyPath, oldValue, newValue) => {
+    listenerPath, propertyPath, oldValue, newValue, upid) => {
 
   if (action === 'set') {
     if (hasPath(root, propertyPath)) {
@@ -164,22 +186,10 @@ const callListeners = (root, action,
 
   const pathListeners = listenersForRoot.get(root)
   if (pathListeners.has(listenerPath)) {
-
-    let updateId
-    if (ongoingUpdateId !== null) {
-      updateId = ongoingUpdateId
-    } else {
-      updateId = nextUpdateId++
-      ongoingUpdateId = updateId
-    }
-
-    debug({root, action, listenerPath, propertyPath,
-      oldValue, newValue, updateId})
-
+    debug({root, action, listenerPath, propertyPath, oldValue, newValue, upid})
     for (const listener of pathListeners.get(listenerPath)) {
-      listener(newValue, oldValue, action, propertyPath, root, updateId)
+      listener(newValue, oldValue, action, propertyPath, root, upid)
     }
-    ongoingUpdateId = null
   }
 }
 
@@ -353,8 +363,6 @@ const getPath = (obj, path) => {
   }
 }
 
-const DEBUG_UPDATE_STRATEGY = false
-
 const update = (root, action, path, oldValue, newValue) => {
 
   const oldIsPrimitive = !isObjectOrArray(oldValue)
@@ -372,12 +380,15 @@ const update = (root, action, path, oldValue, newValue) => {
 
     const matchingPaths = getAllMatchingPaths(
       newValue, pathListeners, path, sortOrder)
+    let upid = updateId.get()
     for (const {listenerPath, propertyPath} of matchingPaths) {
       const pathRelative = propertyPath.slice(path.length)
       callListeners(root, action, listenerPath, propertyPath,
         oldValue,
-        newValue)
+        newValue,
+        upid)
     }
+    updateId.revoke()
 
   } else if (oldIsPrimitive && !newIsPrimitive) {
     if (DEBUG_UPDATE_STRATEGY)
@@ -388,12 +399,15 @@ const update = (root, action, path, oldValue, newValue) => {
 
     const matchingPaths = getAllMatchingPaths(
       newValue, pathListeners, path, SORT.TRUNK_FIRST)
+    let upid = updateId.get()
     for (const {listenerPath, propertyPath} of matchingPaths) {
       const pathRelative = propertyPath.slice(path.length)
       callListeners(root, action, listenerPath, propertyPath,
         getPath(root, propertyPath),
-        getPath(newValue, pathRelative))
+        getPath(newValue, pathRelative),
+        upid)
     }
+    updateId.revoke()
 
   } else if (!oldIsPrimitive && newIsPrimitive) {
     if (DEBUG_UPDATE_STRATEGY)
@@ -404,17 +418,21 @@ const update = (root, action, path, oldValue, newValue) => {
 
     const matchingPaths = getAllMatchingPaths(
       oldValue, pathListeners, path, SORT.LEAF_FIRST)
+    let upid = updateId.get()
     for (const {listenerPath, propertyPath} of matchingPaths) {
       callListeners(root, 'delete', listenerPath, propertyPath,
         getPath(root, propertyPath),
-        undefined)
+        undefined,
+        upid)
     }
+    updateId.revoke()
 
   } else {
     if (DEBUG_UPDATE_STRATEGY)
       console.log([ path, oldValue, "object -> object", newValue])
     const pathListeners = listenersForRoot.get(root)
 
+    let upid = updateId.get()
     // Call listeners for this path that the object is being assigned to.
     ;(() => {
       const matchingPaths = generalisePath(path, SORT.TRUNK_FIRST).map((x) => {
@@ -423,7 +441,8 @@ const update = (root, action, path, oldValue, newValue) => {
       for (const {listenerPath, propertyPath} of matchingPaths) {
         callListeners(root, action, listenerPath, propertyPath,
           oldValue,
-          newValue)
+          newValue,
+          upid)
       }
     })()
 
@@ -440,7 +459,8 @@ const update = (root, action, path, oldValue, newValue) => {
         if (pathRelative.length === 0) continue
         callListeners(root, 'set', listenerPath, propertyPath,
           getPath(root, propertyPath),
-          getPath(added, pathRelative))
+          getPath(added, pathRelative),
+          upid)
       }
     })()
 
@@ -453,7 +473,8 @@ const update = (root, action, path, oldValue, newValue) => {
         if (pathRelative.length === 0) continue
         callListeners(root, 'set', listenerPath, propertyPath,
           getPath(root, propertyPath),
-          getPath(updated, pathRelative))
+          getPath(updated, pathRelative),
+          upid)
       }
     })()
 
@@ -478,10 +499,12 @@ const update = (root, action, path, oldValue, newValue) => {
           if (pathRelative.length === 0) continue
           callListeners(root, 'delete', listenerPath, propertyPath,
             getPath(root, propertyPath),
-            undefined)
+            undefined,
+            upid)
         }
       }
     })()
+    updateId.revoke()
   }
 }
 

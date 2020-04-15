@@ -94,17 +94,17 @@ Your callback function is called with these arguments:
 
  - `newValue`
  - `oldValue`
- - `change`: contains one of the following:
+ - `change`: One of the following strings:
    - `'create'` if the property did not previously exist, and now does
    - `'change'` if the property also previously existed
    - `'delete'` if the property stopped existing
- - `path`: contains an Array representing the property path through the object
+ - `path`: An Array representing the property path through the object
    at which this update happened.
- - `obj`: contains a reference to the object as it currently exists (just
+ - `obj`: A reference to the object as it currently exists (just
    before the described update is actually applied).
- - `callId`: contains the index of the currently happening change callback.
-   Always a new larger number with every call, except if your listener itself
-   changes the object; updates caused by that change have the same update ID.
+ - `updateId`: A number uniquely identifying the currently happening change.
+   All listenrs called by the same change (or that are recursively caused by a
+   callback) see the same identifier.
 
 <details><summary>Example: listener setting a property, triggering itself again</summary>
 
@@ -114,8 +114,8 @@ const objerve = require('./main.js')
 const obj = objerve()
 
 objerve.addListener(obj, ['a'],
-  (val, previousVal, action, path, objRef, callId) => {
-    console.log(`[${action}] ${previousVal} -> ${val} (callId ${callId})`)
+  (val, previousVal, action, path, objRef, updateId) => {
+    console.log(`[${action}] ${previousVal} -> ${val} (updateId ${updateId})`)
     if (val > 0) {
       obj.a = val - 1
     }
@@ -130,14 +130,14 @@ console.log(obj.a)
 <!-- !test out re-call -->
 
 > ```
-> [create] undefined -> 3 (callId 0)
-> [create] undefined -> 2 (callId 0)
-> [create] undefined -> 1 (callId 0)
-> [create] undefined -> 0 (callId 0)
+> [create] undefined -> 3 (updateId 0)
+> [create] undefined -> 2 (updateId 0)
+> [create] undefined -> 1 (updateId 0)
+> [create] undefined -> 0 (updateId 0)
 > 0
-> [change] 0 -> 2 (callId 1)
-> [change] 0 -> 1 (callId 1)
-> [change] 0 -> 0 (callId 1)
+> [change] 0 -> 2 (updateId 1)
+> [change] 0 -> 1 (updateId 1)
+> [change] 0 -> 0 (updateId 1)
 > 0
 > ```
 

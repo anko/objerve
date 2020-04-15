@@ -20,8 +20,6 @@ const callArgsEqual = (t, calls, expected) => {
   const callIds = calls.map((args) => args[5])
   const expectedIdArrays = expected.map((args) => args[5])
 
-  //console.log(callIds, expectedIdArrays)
-
   for (let [i, expectedIdArray] of expectedIdArrays.entries()) {
     if (expectedIdArray === undefined) continue
     expectedIdArray.push(callIds[i])
@@ -531,19 +529,40 @@ test('removePrefixListener', (t) => {
 
 test('generic listener call order respects nesting', (t) => {
   const obj = objerve([])
-  const which = []
-  objerve.addPrefixListener(obj, [], () => which.push('prefix'))
-  objerve.addListener(obj, [objerve.each], () => which.push('each'))
-  objerve.addListener(obj, [0], () => which.push('index'))
+  let which = []
+
+  const recordNameAndId = (name) => {
+    return (newVal, oldVal, action, path, obj, id) => {
+      which.push([name, id])
+    }
+  }
+
+  objerve.addPrefixListener(obj, [], recordNameAndId('prefix'))
+  objerve.addListener(obj, [objerve.each], recordNameAndId('each'))
+  objerve.addListener(obj, [0], recordNameAndId('index'))
 
   obj[0] = 'x'
   obj[0] = 'y'
   delete obj[0]
 
+  // Normalise update IDs so lowest is 0
+  let minId = which
+    .map(([name, id]) => id)
+    .reduce((a, b) => Math.min(a, b), Infinity)
+  which = which.map(([name, id]) => [name, id - minId])
+
+  // Observations:
+  //
+  //  - In the first two sets of 3 (corresponding to the create and change)
+  //    callbacks are called in increasing order of specificity.
+  //  - The last set of 3 (corresponding to delete) is called in decreasing
+  //    order of specificity.
+  //  - Each set of 3 has the same update ID, because they were all triggered
+  //    by the same change.
   t.deepEquals(which, [
-    'prefix', 'each', 'index',
-    'prefix', 'each', 'index',
-    'index', 'each', 'prefix'
+    ['prefix', 0], ['each', 0], ['index', 0],
+    ['prefix', 1], ['each', 1], ['index', 1],
+    ['index', 2], ['each', 2], ['prefix', 2],
   ])
   t.end()
 })
@@ -665,7 +684,7 @@ test('circular reference over 3 objerve instances', (t) => {
   t.end()
 })
 
-test('updates caused by assignment in listener get same update id', (t) => {
+test('recursive set callback', (t) => {
   const obj = objerve()
   const {calls: calls1, f: f1} = callLog((newValue) => {
     if (newValue > 0) {
@@ -718,5 +737,58 @@ test('updates caused by assignment in listener get same update id', (t) => {
   t.ok(allEqual(shouldBeSame2),
     `same update id ${JSON.stringify(shouldBeSame2)}`)
 
+  t.end()
+})
+
+test('recursive delete callback', (t) => {
+  const obj = objerve()
+  const {calls: calls1, f: f1} = callLog((newValue, oldValue, action) => {
+    if (action === 'delete') {
+      delete obj.b
+    }
+  })
+  const {calls: calls2, f: f2} = callLog()
+
+  objerve.addListener(obj, ['a'], f1)
+  objerve.addListener(obj, ['b'], f2)
+  obj.a = 1
+  obj.b = 2
+  delete obj.a
+
+  const shouldBeSame = []
+  callArgsEqual(t, calls1, [
+    [1, undefined, 'create', ['a'], obj],
+    [undefined, 1, 'delete', ['a'], obj, shouldBeSame],
+  ])
+  callArgsEqual(t, calls2, [
+    [2, undefined, 'create', ['b'], obj],
+    [undefined, 2, 'delete', ['b'], obj, shouldBeSame],
+  ])
+  t.ok(allEqual(shouldBeSame),
+    `same update id ${JSON.stringify(shouldBeSame)}`)
+  t.end()
+})
+
+test('recursive callback across instances', (t) => {
+  const obj1 = objerve()
+  const obj2 = objerve()
+  const {calls: calls1, f: f1} = callLog((newValue) => {
+    obj2.b = newValue
+  })
+  const {calls: calls2, f: f2} = callLog()
+
+  objerve.addListener(obj1, ['a'], f1)
+  objerve.addListener(obj2, ['b'], f2)
+  obj1.a = obj2
+
+  const shouldBeSame = []
+  callArgsEqual(t, calls1, [
+    [obj2, undefined, 'create', ['a'], obj1, shouldBeSame],
+  ])
+  callArgsEqual(t, calls2, [
+    [obj2, undefined, 'create', ['b'], obj2, shouldBeSame],
+  ])
+  t.ok(allEqual(shouldBeSame),
+    `same update id ${JSON.stringify(shouldBeSame)}`)
   t.end()
 })
