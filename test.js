@@ -685,6 +685,23 @@ test('circular reference over 3 objerve instances', (t) => {
   t.end()
 })
 
+test('multiple properties referring elsewhere', (t) => {
+  const obj1 = objerve()
+  const obj2 = objerve()
+  const {calls, f} = callLog()
+  objerve.addListener(obj1, ['a', 'x'], f)
+  objerve.addListener(obj1, ['b', 'x'], f)
+  obj1.a = obj2
+  obj1.b = obj2
+  obj2.x = 1
+
+  callArgsEqual(t, calls, [
+    [1, undefined, 'create', ['a', 'x'], obj1],
+    [1, undefined, 'create', ['b', 'x'], obj1],
+  ])
+  t.end()
+})
+
 test('recursive set callback', (t) => {
   const obj = objerve()
   const {calls: calls1, f: f1} = callLog((newValue) => {
