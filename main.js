@@ -258,196 +258,6 @@ const callListeners = (root, action,
   }
 }
 
-const generalisePath = (path, sortOrder) => {
-  // Generalise this path, creating every possible listener path that could
-  // match it.  More specifically:
-  //
-  // - Letting array indexes be themselves or 'EACH'
-  // - Letting the path terminate with 'TREE' anywhere including root
-
-  let paths = []
-  if (sortOrder === SORT.TRUNK_FIRST) paths.push([TREE])
-  switch (path.length) {
-    case 1:
-      const elem = path[0]
-      if (sortOrder === SORT.TRUNK_FIRST) {
-        if (isArrayIndex(elem)) paths.push([EACH])
-        paths.push([elem])
-      } else {
-        paths.push([elem])
-        if (isArrayIndex(elem)) paths.push([EACH])
-      }
-      break
-    default:
-      const [head, ...rest] = path
-      for (let x of generalisePath([head], sortOrder)) {
-        // A 'TREE' symbol always terminates a listener path anyway, so don't
-        // bother searching after it.
-        if (last(x) === TREE) continue
-        for (let y of generalisePath(rest, sortOrder)) {
-          paths.push(x.concat(y))
-        }
-      }
-      break
-  }
-  if (sortOrder !== SORT.TRUNK_FIRST) paths.push([TREE])
-  return paths
-}
-
-const EACH = Symbol('objerve [each]')
-const TREE = Symbol('objerve [tree]')
-const SORT = {
-  TRUNK_FIRST: Symbol('sort order: trunk → leaf'),
-  LEAF_FIRST: Symbol('sort order: leaf → trunk'),
-}
-const getAllMatchingPaths = (obj, akmap, pathPrefix, sortOrder, listenerPathPrefix, seenObjects) => {
-  // Get all paths in the object that the given array-keyed-map also has paths
-  // for.  The akmap is passed so that we can prune the search, and avoid
-  // listing path branches we don't even have a subscriber for.
-  //
-  // Because of aliases like the EACH symbol (which matches any array index),
-  // it may be necessary to generalise and return multiple listener paths for
-  // each property path.
-
-  // In order to detect cyclical references, we track what objects we've seen
-  // already in this path.  This way we can exit out early if we see one again;
-  // following it would lead us to loop infinitely.
-  seenObjects = seenObjects || []
-
-  // On initial call, fully generalise the property path we've gotten, and
-  // return a join of all recursive calls with every possible interpretation.
-  if (!listenerPathPrefix) {
-    const listenerPathPrefixes = generalisePath(pathPrefix, sortOrder)
-    return listenerPathPrefixes.reduce((prev, next) => {
-      return prev.concat(
-        getAllMatchingPaths(obj, akmap, pathPrefix, sortOrder, next, seenObjects))
-    }, [])
-  }
-
-  if (rootOfProxy.has(obj)) {
-    if (seenObjects.includes(obj)) {
-      return []
-    } else {
-      seenObjects = seenObjects.concat([obj])
-    }
-  }
-
-  debug({obj, akmap: Array.from(akmap.entries()),
-    pathPrefix, sortOrder, listenerPathPrefix,
-    hasPrefix: akmap.hasPrefix(listenerPathPrefix),
-    seenObjects})
-
-  if (!akmap.hasPrefix(listenerPathPrefix)) {
-    // We don't have any listeners with this prefix.  Exit early.
-    return []
-  } else {
-    // We have something somewhere with this prefix.  Explore further.
-    let paths = []
-
-    // First declare how visiting the current node and children works, then
-    // call them depending on the given sort order.
-
-    const visitTrunk = () => {
-      if (akmap.has(listenerPathPrefix)) {
-        paths.push({
-          propertyPath: pathPrefix,
-          listenerPath: listenerPathPrefix,
-        })
-      }
-    }
-
-    const visitLeaves = () => {
-      if (isObjectOrArray(obj)) {
-        for (const key of Object.keys(obj)) {
-
-          // When calling recursively for children, extend the
-          // listenerPathPrefix with a possible property key, unless it
-          // terminates with TREE; in those cases we still want to extend
-          // pathPrefix, but leave the listenerPathPrefix as-is, so the same
-          // prefix listener gets called for everything under it.
-
-          // Explore the usual property branch.
-          const listenerPath = last(listenerPathPrefix) === TREE
-            ? listenerPathPrefix
-            : listenerPathPrefix.concat([key])
-          paths.push(...getAllMatchingPaths(
-            obj[key], akmap,
-            pathPrefix.concat([key]),
-            sortOrder,
-            listenerPath,
-            seenObjects))
-
-          if (isArrayIndex(key)) {
-            // This is an array index.  Also explore the EACH branch.
-            const listenerPath = last(listenerPathPrefix) === TREE
-              ? listenerPathPrefix
-              : listenerPathPrefix.concat([EACH])
-            paths.push(...getAllMatchingPaths(
-              obj[key], akmap,
-              pathPrefix.concat([key]),
-              sortOrder,
-              listenerPath,
-              seenObjects))
-          }
-        }
-      }
-    }
-
-    switch (sortOrder) {
-      case SORT.LEAF_FIRST:
-        visitLeaves()
-        visitTrunk()
-        break
-      case SORT.TRUNK_FIRST:
-        visitTrunk()
-        visitLeaves()
-        break
-      default:
-        throw new Error(`Invalid sort order: ${sortOrder}`)
-    }
-
-    return paths
-  }
-}
-
-const last = (arr) => arr[arr.length - 1]
-
-
-const hasPath = (obj, path) => {
-  if (!isObjectOrArray(obj)) return false
-  switch (path.length) {
-    case 0:
-      return true
-    case 1:
-      return path[0] in obj
-    default:
-      let [head, ...rest] = path
-      // The path is an array of keys to be used sequentially as properties
-      if (head in obj) {
-        return hasPath(obj[head], rest)
-      } else {
-        return false
-      }
-  }
-}
-
-const getPath = (obj, path) => {
-  switch (path.length) {
-    case 0:
-      return obj
-    case 1:
-      return obj[path[0]]
-    default:
-      let [head, ...rest] = path
-      // The path is an array of keys to be used sequentially as properties
-      if (head in obj) {
-        return getPath(obj[head], rest)
-      } else {
-        return undefined
-      }
-  }
-}
-
 const shallowUpdate = (root, action, path, oldValue, newValue) => {
   // Call listeners for this path only, without trying to be clever and
   // accounting for sub-properties and everything.  This should only be called
@@ -716,6 +526,196 @@ const addPrefixListener = (root, path, func) => {
 const removePrefixListener = (root, path, func) => {
   path = path.concat([TREE])
   removeListener(root, path, func)
+}
+
+const generalisePath = (path, sortOrder) => {
+  // Generalise this path, creating every possible listener path that could
+  // match it.  More specifically:
+  //
+  // - Letting array indexes be themselves or 'EACH'
+  // - Letting the path terminate with 'TREE' anywhere including root
+
+  let paths = []
+  if (sortOrder === SORT.TRUNK_FIRST) paths.push([TREE])
+  switch (path.length) {
+    case 1:
+      const elem = path[0]
+      if (sortOrder === SORT.TRUNK_FIRST) {
+        if (isArrayIndex(elem)) paths.push([EACH])
+        paths.push([elem])
+      } else {
+        paths.push([elem])
+        if (isArrayIndex(elem)) paths.push([EACH])
+      }
+      break
+    default:
+      const [head, ...rest] = path
+      for (let x of generalisePath([head], sortOrder)) {
+        // A 'TREE' symbol always terminates a listener path anyway, so don't
+        // bother searching after it.
+        if (last(x) === TREE) continue
+        for (let y of generalisePath(rest, sortOrder)) {
+          paths.push(x.concat(y))
+        }
+      }
+      break
+  }
+  if (sortOrder !== SORT.TRUNK_FIRST) paths.push([TREE])
+  return paths
+}
+
+const EACH = Symbol('objerve [each]')
+const TREE = Symbol('objerve [tree]')
+const SORT = {
+  TRUNK_FIRST: Symbol('sort order: trunk → leaf'),
+  LEAF_FIRST: Symbol('sort order: leaf → trunk'),
+}
+const getAllMatchingPaths = (obj, akmap, pathPrefix, sortOrder, listenerPathPrefix, seenObjects) => {
+  // Get all paths in the object that the given array-keyed-map also has paths
+  // for.  The akmap is passed so that we can prune the search, and avoid
+  // listing path branches we don't even have a subscriber for.
+  //
+  // Because of aliases like the EACH symbol (which matches any array index),
+  // it may be necessary to generalise and return multiple listener paths for
+  // each property path.
+
+  // In order to detect cyclical references, we track what objects we've seen
+  // already in this path.  This way we can exit out early if we see one again;
+  // following it would lead us to loop infinitely.
+  seenObjects = seenObjects || []
+
+  // On initial call, fully generalise the property path we've gotten, and
+  // return a join of all recursive calls with every possible interpretation.
+  if (!listenerPathPrefix) {
+    const listenerPathPrefixes = generalisePath(pathPrefix, sortOrder)
+    return listenerPathPrefixes.reduce((prev, next) => {
+      return prev.concat(
+        getAllMatchingPaths(obj, akmap, pathPrefix, sortOrder, next, seenObjects))
+    }, [])
+  }
+
+  if (rootOfProxy.has(obj)) {
+    if (seenObjects.includes(obj)) {
+      return []
+    } else {
+      seenObjects = seenObjects.concat([obj])
+    }
+  }
+
+  debug({obj, akmap: Array.from(akmap.entries()),
+    pathPrefix, sortOrder, listenerPathPrefix,
+    hasPrefix: akmap.hasPrefix(listenerPathPrefix),
+    seenObjects})
+
+  if (!akmap.hasPrefix(listenerPathPrefix)) {
+    // We don't have any listeners with this prefix.  Exit early.
+    return []
+  } else {
+    // We have something somewhere with this prefix.  Explore further.
+    let paths = []
+
+    // First declare how visiting the current node and children works, then
+    // call them depending on the given sort order.
+
+    const visitTrunk = () => {
+      if (akmap.has(listenerPathPrefix)) {
+        paths.push({
+          propertyPath: pathPrefix,
+          listenerPath: listenerPathPrefix,
+        })
+      }
+    }
+
+    const visitLeaves = () => {
+      if (isObjectOrArray(obj)) {
+        for (const key of Object.keys(obj)) {
+
+          // When calling recursively for children, extend the
+          // listenerPathPrefix with a possible property key, unless it
+          // terminates with TREE; in those cases we still want to extend
+          // pathPrefix, but leave the listenerPathPrefix as-is, so the same
+          // prefix listener gets called for everything under it.
+
+          // Explore the usual property branch.
+          const listenerPath = last(listenerPathPrefix) === TREE
+            ? listenerPathPrefix
+            : listenerPathPrefix.concat([key])
+          paths.push(...getAllMatchingPaths(
+            obj[key], akmap,
+            pathPrefix.concat([key]),
+            sortOrder,
+            listenerPath,
+            seenObjects))
+
+          if (isArrayIndex(key)) {
+            // This is an array index.  Also explore the EACH branch.
+            const listenerPath = last(listenerPathPrefix) === TREE
+              ? listenerPathPrefix
+              : listenerPathPrefix.concat([EACH])
+            paths.push(...getAllMatchingPaths(
+              obj[key], akmap,
+              pathPrefix.concat([key]),
+              sortOrder,
+              listenerPath,
+              seenObjects))
+          }
+        }
+      }
+    }
+
+    switch (sortOrder) {
+      case SORT.LEAF_FIRST:
+        visitLeaves()
+        visitTrunk()
+        break
+      case SORT.TRUNK_FIRST:
+        visitTrunk()
+        visitLeaves()
+        break
+      default:
+        throw new Error(`Invalid sort order: ${sortOrder}`)
+    }
+
+    return paths
+  }
+}
+
+const last = (arr) => arr[arr.length - 1]
+
+
+const hasPath = (obj, path) => {
+  if (!isObjectOrArray(obj)) return false
+  switch (path.length) {
+    case 0:
+      return true
+    case 1:
+      return path[0] in obj
+    default:
+      let [head, ...rest] = path
+      // The path is an array of keys to be used sequentially as properties
+      if (head in obj) {
+        return hasPath(obj[head], rest)
+      } else {
+        return false
+      }
+  }
+}
+
+const getPath = (obj, path) => {
+  switch (path.length) {
+    case 0:
+      return obj
+    case 1:
+      return obj[path[0]]
+    default:
+      let [head, ...rest] = path
+      // The path is an array of keys to be used sequentially as properties
+      if (head in obj) {
+        return getPath(obj[head], rest)
+      } else {
+        return undefined
+      }
+  }
 }
 
 const diffObjects = (oldValue, newValue) => {
