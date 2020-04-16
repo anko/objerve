@@ -119,10 +119,37 @@ const proxy = (obj, rootArg, path=[]) => {
   const arrayLengthCache = new WeakMap()
 
   // If a user callback modifies the path, we want to give it priority, and not
-  // overwrite its value immediately after.  This Map tracks what paths proxies
-  // were called for during a particular 'update' run.
+  // overwrite its value immediately after.  Hence this 'updateListeners'
+  // wrapper around bare 'update'.
+  //
+  // All it does in addition is maintain the 'proxyHitCache' so it knows which
+  // paths an update changed, and can therefore report to its caller whether
+  // the user's listeners also changed the property that they were notified of
+  // a change for.  The caller can then choose to avoid overwriting the user's
+  // change with the new incoming value.
   const proxyHitCache = new Map()
   let nextId = 0
+  const updateListeners = (...args) => {
+    const localPath = args[2]
+
+    // For all cache entries that are active, note that this path was modified.
+    for (let v of proxyHitCache.values()) { v.set(localPath, true) }
+
+    // Make our own cache entry to track modified paths
+    const id = nextId++
+    proxyHitCache.set(id, akm())
+
+    // Call update (which possibly runs user callbacks)
+    update(...args)
+
+    // Check if user code changed it
+    const somethingChanged = proxyHitCache.get(id).has(localPath)
+
+    // Clear our hit cache entry
+    proxyHitCache.delete(id)
+
+    return { listenerChangedValue: somethingChanged }
+  }
 
   const node = new Proxy(obj, {
     set: (o, key, value) => {
@@ -136,8 +163,8 @@ const proxy = (obj, rootArg, path=[]) => {
           for (let i = value; i < oldValue; ++i) {
             const indexPath = localPath.slice(0, -1).concat([String(i)])
             const args = [root, 'delete', indexPath, o[i], undefined]
-            update(...args)
-            o.length = value
+            const {listenerChangedValue} = updateListeners(...args)
+            if (!listenerChangedValue) o.length = value
           }
           // Use the old array length value from the cache.
           oldValue = arrayLengthCache.get(o)
@@ -146,45 +173,18 @@ const proxy = (obj, rootArg, path=[]) => {
         arrayLengthCache.set(o, o.length)
       }
 
-      // For all caches that are running, note that this path was modified.
-      for (let v of proxyHitCache.values()) { v.set(localPath, true) }
-
-      // Make our own cache to track what paths get modified
-      const id = nextId++
-      proxyHitCache.set(id, akm())
-      // TODO
-      // TODO do this also for deletes, and length stuff above
-      // TODO
-
-      // Call update (which possibly runs user callbacks)
       const args = [root, 'set', localPath, oldValue, value]
-      update(...args)
-
-      // If this path wasn't touched, then actually set the value.  If it was
-      // touched, don't set anything; user code will have set it to what it
-      // needs to be.
-      if (!proxyHitCache.get(id).has(localPath))
-        o[key] = value
-
-      // Clear our cache
-      proxyHitCache.delete(id)
+      const {listenerChangedValue} = updateListeners(...args)
+      if (!listenerChangedValue) o[key] = value
 
       return true // Indicate success
     },
     deleteProperty: (o, key) => {
       let localPath = path.concat([key])
 
-      for (let v of proxyHitCache.values()) { v.set(localPath, true) }
-      const id = nextId++
-      proxyHitCache.set(id, akm())
-
       const args = [root, 'delete', localPath, o[key], undefined]
-      update(...args)
-
-      if (!proxyHitCache.get(id).has(localPath))
-        delete o[key]
-
-      proxyHitCache.delete(id)
+      const {listenerChangedValue} = updateListeners(...args)
+      if (!listenerChangedValue) delete o[key]
 
       return true // Indicate success
     },

@@ -827,6 +827,31 @@ test('recursive delete callback creating the property again', (t) => {
   t.end()
 })
 
+test('recursive length callback setting length', (t) => {
+  const obj = objerve()
+  const {calls: calls, f} = callLog((newValue, oldValue, action) => {
+    if (action === 'change' && newValue < 10) {
+      obj.x.length = 10
+    }
+  })
+
+  objerve.addListener(obj, ['x', 'length'], f)
+  obj.x = []
+  obj.x.push(1)
+
+  t.deepEqual(obj.x.length, 10)
+
+  const shouldBeSame = []
+  callArgsEqual(t, calls, [
+    [0, undefined, 'create', ['x', 'length'], obj],
+    [1, 0, 'change', ['x', 'length'], obj, shouldBeSame],
+    [10, 1, 'change', ['x', 'length'], obj, shouldBeSame],
+  ])
+  t.ok(allEqual(shouldBeSame),
+    `same update id ${JSON.stringify(shouldBeSame)}`)
+  t.end()
+})
+
 test('recursive callback across instances', (t) => {
   const obj1 = objerve()
   const obj2 = objerve()
