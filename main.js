@@ -331,7 +331,7 @@ const update = (root, action, path, oldValue, newValue) => {
 
     // Call listeners for properties within that new object
     ;(() => {
-      for (const k of Object.keys(newValue)) {
+      for (const k of Object.getOwnPropertyNames(newValue)) {
         const matchingPaths = getAllMatchingPaths(
           newValue[k], pathListeners, path.concat([k]), SORT.TRUNK_FIRST)
         for (const {listenerPath, propertyPath} of matchingPaths) {
@@ -357,7 +357,7 @@ const update = (root, action, path, oldValue, newValue) => {
 
     // Call listeners for now-deleted properties
     ;(() => {
-      for (const k of Object.keys(oldValue)) {
+      for (const k of Object.getOwnPropertyNames(oldValue)) {
         const matchingPaths = getAllMatchingPaths(
           oldValue[k], pathListeners, path.concat([k]), SORT.LEAF_FIRST)
         for (const {listenerPath, propertyPath} of matchingPaths) {
@@ -442,7 +442,7 @@ const update = (root, action, path, oldValue, newValue) => {
       // diff only shows the topmost level that got deleted.  We want every
       // deleted property's full path though, so we can call its listeners to
       // inform of their deletion.
-      const deletedProperties = Object.keys(deleted)
+      const deletedProperties = Object.getOwnPropertyNames(deleted)
 
       for (const deletedProp of deletedProperties) {
         const matchingPaths = getAllMatchingPaths(
@@ -628,7 +628,7 @@ const getAllMatchingPaths = (obj, akmap, pathPrefix, sortOrder, listenerPathPref
 
     const visitLeaves = () => {
       if (isObjectOrArray(obj)) {
-        for (const key of Object.keys(obj)) {
+        for (const key of Object.getOwnPropertyNames(obj)) {
 
           // When calling recursively for children, extend the
           // listenerPathPrefix with a possible property key, unless it
@@ -777,7 +777,7 @@ const visitProperties = (obj, callback, path=[]) => {
   let mayContinue
   mayContinue = callback(path, obj)
   if (mayContinue) {
-    for (let key of Object.keys(obj)) {
+    for (let key of Object.getOwnPropertyNames(obj)) {
       const pathHere = path.concat([key])
       mayContinue = callback(pathHere, obj[key])
       if (mayContinue && isObjectOrArray(obj[key])) {

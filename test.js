@@ -428,22 +428,24 @@ test('[each] getting truncated respects nesting order', (t) => {
 })
 
 test('listening for array length property', (t) => {
-  const obj = objerve([])
+  const obj = objerve()
 
   const {calls, f} = callLog()
 
-  objerve.addListener(obj, ['length'], f)
+  objerve.addListener(obj, ['x', 'length'], f)
 
-  obj.push(true)
-  obj.push(true)
-  obj.length = 0
-  obj.length = 3
+  obj.x = []
+  obj.x.push(true)
+  obj.x.push(true)
+  obj.x.length = 0
+  obj.x.length = 3
 
   callArgsEqual(t, calls, [
-    [1, 0, 'change', ['length'], obj],
-    [2, 1, 'change', ['length'], obj],
-    [0, 2, 'change', ['length'], obj],
-    [3, 0, 'change', ['length'], obj],
+    [0, undefined, 'create', ['x', 'length'], obj],
+    [1, 0, 'change', ['x', 'length'], obj],
+    [2, 1, 'change', ['x', 'length'], obj],
+    [0, 2, 'change', ['x', 'length'], obj],
+    [3, 0, 'change', ['x', 'length'], obj],
   ])
 
   t.end()
