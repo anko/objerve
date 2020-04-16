@@ -205,6 +205,7 @@ const proxy = (obj, rootArg, path=[]) => {
 }
 
 const proxyBase = (template={}) => {
+  if (rootOfProxy.has(template)) return template
   const p = proxy(template)
   listenersForRoot.set(p, akm())
   return p

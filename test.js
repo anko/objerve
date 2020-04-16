@@ -940,3 +940,24 @@ test('listening to empty path does nothing', (t) => {
   callArgsEqual(t, calls, [])
   t.end()
 })
+
+test('wrapping existing objerve instance returns existing one', (t) => {
+  const obj1 = objerve()
+  const obj2 = objerve(obj1)
+  const {calls: calls1, f: f1} = callLog()
+  objerve.addListener(obj1, ['x'], f1)
+  const {calls: calls2, f: f2} = callLog()
+  objerve.addListener(obj2, ['x'], f2)
+
+  obj2.x = 123
+  obj2.x = undefined
+  delete obj2.x
+
+  callArgsEqual(t, calls1, [
+    [123, undefined, 'create', ['x']],
+    [undefined, 123, 'change', ['x']],
+    [undefined, undefined, 'delete', ['x']],
+  ])
+  t.deepEqual(calls2, calls1) // same ids and everything
+  t.end()
+})
