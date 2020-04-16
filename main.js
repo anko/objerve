@@ -471,6 +471,12 @@ const addListener = (obj, path, func) => {
   if (!rootOfProxy.has(obj)) {
     throw TypeError(`Not an objerve instance: ${JSON.stringify(obj)}`)
   }
+  if (!(path instanceof Array)) {
+    throw TypeError(`Invalid path: ${JSON.stringify(path)}`)
+  }
+  if (!(func instanceof Function)) {
+    throw TypeError(`Invalid callback function: ${JSON.stringify(path)}`)
+  }
 
   // Convert path elements to strings for internal consistency.  A string that
   // looks like a number is equivalent to that number when used as a property

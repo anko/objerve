@@ -909,3 +909,34 @@ test('technique: accumulate changes, defer reaction to next tick', (t) => {
   obj.a = 2
   obj.a = 3
 })
+
+test('API type asserts', (t) => {
+  const obj = objerve()
+  const path = []
+  const f = () => {}
+
+  t.throws(() => {
+    objerve.addListener(false, path, f)
+  }, /Not an objerve instance/)
+  t.throws(() => {
+    objerve.addListener(obj, false, f)
+  }, /Invalid path/)
+  t.throws(() => {
+    objerve.addListener(obj, path, false)
+  }, /Invalid callback/)
+
+  t.end()
+})
+
+test('listening to empty path does nothing', (t) => {
+  const obj = objerve()
+  const {calls, f} = callLog()
+  objerve.addListener(obj, [], f)
+
+  obj.x = 123
+  obj.x = undefined
+  delete obj.x
+
+  callArgsEqual(t, calls, [])
+  t.end()
+})
