@@ -164,7 +164,6 @@ const proxy = (obj, rootArg, path=[]) => {
       // touched, don't set anything; user code will have set it to what it
       // needs to be.
       if (!proxyHitCache.get(id).has(localPath))
-        //Reflect.set(o, key, value)
         o[key] = value
 
       // Clear our cache
@@ -174,11 +173,19 @@ const proxy = (obj, rootArg, path=[]) => {
     },
     deleteProperty: (o, key) => {
       let localPath = path.concat([key])
-      const args = [root, 'delete', localPath, o[key], undefined]
 
+      for (let v of proxyHitCache.values()) { v.set(localPath, true) }
+      const id = nextId++
+      proxyHitCache.set(id, akm())
+
+      const args = [root, 'delete', localPath, o[key], undefined]
       update(...args)
-      //Reflect.deleteProperty(o, key)
-      delete o[key]
+
+      if (!proxyHitCache.get(id).has(localPath))
+        delete o[key]
+
+      proxyHitCache.delete(id)
+
       return true // Indicate success
     },
   })

@@ -800,6 +800,31 @@ test('recursive delete callback', (t) => {
   t.end()
 })
 
+test('recursive delete callback creating the property again', (t) => {
+  const obj = objerve()
+  const {calls: calls, f} = callLog((newValue, oldValue, action) => {
+    if (action === 'delete') {
+      obj.x = 'I\'m back!'
+    }
+  })
+
+  objerve.addListener(obj, ['x'], f)
+  obj.x = 1
+  delete obj.x
+
+  t.equal(obj.x, 'I\'m back!', 'callback changed value')
+
+  const shouldBeSame = []
+  callArgsEqual(t, calls, [
+    [1, undefined, 'create', ['x'], obj],
+    [undefined, 1, 'delete', ['x'], obj, shouldBeSame],
+    ['I\'m back!', 1, 'change', ['x'], obj, shouldBeSame],
+  ])
+  t.ok(allEqual(shouldBeSame),
+    `same update id ${JSON.stringify(shouldBeSame)}`)
+  t.end()
+})
+
 test('recursive callback across instances', (t) => {
   const obj1 = objerve()
   const obj2 = objerve()
@@ -824,7 +849,7 @@ test('recursive callback across instances', (t) => {
   t.end()
 })
 
-test('accumulate changes, defer reaction to next tick', (t) => {
+test('technique: accumulate changes, defer reaction to next tick', (t) => {
   const obj = objerve()
 
   const changes = akm()
