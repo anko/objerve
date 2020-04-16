@@ -32,15 +32,17 @@ obj.a = null
 
 # features
 
- - Behaves exactly like an ordinary Object, but fires callbacks
+ - Behaves exactly like an ordinary Object
  - Can listen to fixed paths, or path prefixes
- - Can use an [array index wildcard](#objerveeach) in paths, which matches any
-   array index
- - Putting parts of objerve instances inside each other works, even with
-   circular references
- - Can tell apart `undefined` property value and property deletion
- - [The order in which callbacks are called](#call-order) respects nesting
-   level
+ - Can use [`objerve.each`](#objerveeach) in paths to match any array index
+ - Putting objerve instances (or parts of them) inside each others' properties
+   fully works, and property changes are propagated between instances if they
+   are properties of each other (even with circular references)
+ - Can tell apart `undefined` property value and property deletion, thanks to
+   the `action` argument passed to callbacks (shows `created` / `changed` /
+   `deleted`).
+ - [The order in which callbacks are called](#call-order) respects nesting, so
+   your callbacks can setup and teardown state in topologically correct order
 
 # api
 

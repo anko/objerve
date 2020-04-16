@@ -2,10 +2,11 @@ const akm = require('array-keyed-map')
 const deepObjectDiff = require('deep-object-diff').detailedDiff
 
 const debug = () => {}
-debug['active'] = console.log
+debug['active'] = (x) => console.dir(x, {depth: null})
 
 const DEBUG_UPDATE_STRATEGY = false
 const DEBUG_UPDATE_ID = false
+const DEBUG_SUB_ROOT = false
 
 const rootOfProxy = new WeakMap()
 const pathOfProxy = new WeakMap()
@@ -19,27 +20,82 @@ const proxy = (obj, rootArg, path=[]) => {
   // subscribe to this property on ourselves, so if it changes to point to some
   // other value, we clean up both listeners.
   if (rootOfProxy.has(obj)) {
+
+    // If this is a reference to ourselves, just return it.  It's equivalent.
+    if (rootOfProxy.get(obj) === rootArg) return obj
+
+    const prefixesToIgnore = akm()
     const subRoot = rootOfProxy.get(obj)
     const subPath = pathOfProxy.get(obj)
     const prefixListener = (newValue, oldValue, action, changePath, obj) => {
       changePath = changePath.slice(subPath.length)
-      const finalPath = path.concat(changePath)
-      if (newValue === rootArg) {
-        // This is a circular reference.  It'll already have called its
-        // updates, so we'll cut here to avoid looping infinitely.
-        return
+      if (DEBUG_SUB_ROOT)
+        console.log('sub-root changed', {subRoot, changePath})
+      let doFullUpdate = true
+
+      // If the subRoot we're observing at this path has a reference to us, we
+      // want to ignore that property now and in the future, until it changes
+      // to something else.  If we didn't do this, we'd risk looping
+      // infinitely:  We have a reference to them, and they to us.
+      if (rootOfProxy.get(newValue) === rootArg) {
+        if (DEBUG_SUB_ROOT)
+          console.log('adding to ignore list', {subRoot, changePath})
+        prefixesToIgnore.set(changePath, true)
+        doFullUpdate = false
+      } else if (prefixesToIgnore.has(changePath)) {
+        if (DEBUG_SUB_ROOT) console.log('ignoring', {subRoot, changePath})
+        // If it has changed to a new value, stop ignoring it
+        if (rootOfProxy.get(newValue) !== rootArg) {
+          if (DEBUG_SUB_ROOT)
+            console.log('removing from ignore list', {subRoot, changePath})
+          prefixesToIgnore.delete(changePath)
+        } else {
+          // Might have changed to another thing that is a reference to us.
+          // Continue ignoring, but allow a shallow update, so listeners for
+          // that path exactly can see it changed.
+          doFullUpdate = false
+        }
+      } else {
+        if (allPrefixes(changePath).some((x) => prefixesToIgnore.has(x))) {
+          // This is some sub-property within the property we want to ignore.
+          // Return without triggering any listener updates at all.
+          return
+        }
       }
-      update(rootArg, action, finalPath, oldValue, newValue)
+
+      const finalPath = path.concat(changePath)
+      if (doFullUpdate) {
+        update(rootArg, action, finalPath, oldValue, newValue)
+      } else {
+        shallowUpdate(rootArg, action, finalPath, oldValue, newValue)
+      }
     }
+    if (DEBUG_SUB_ROOT)
+      console.log('prefix-listening', {subRoot})
     addPrefixListener(subRoot, [], prefixListener)
 
     const propertyListener = (newValue, oldValue, action, path, _) => {
       if (newValue !== obj) {
+        if (DEBUG_SUB_ROOT)
+          console.log('own path changed; unlistening', {path})
         removeListener(rootArg, path, propertyListener)
         removePrefixListener(subRoot, [], prefixListener)
       }
     }
     addListener(rootArg, path, propertyListener)
+    if (DEBUG_SUB_ROOT)
+      console.log('listening to own path', {path})
+
+    // In case the object already has properties that are pointing to us,
+    // iterate through it to add them to the ignore list already.
+    visitProperties(obj, (path, val) => {
+      if (rootOfProxy.get(val) === rootArg) {
+        prefixesToIgnore.set(path, true)
+        if (DEBUG_SUB_ROOT)
+          console.log(rootArg, ': pre-adding to ignore list', {obj, path})
+        return false
+      } else return true
+    })
 
     return obj
   }
@@ -108,7 +164,8 @@ const proxy = (obj, rootArg, path=[]) => {
       // touched, don't set anything; user code will have set it to what it
       // needs to be.
       if (!proxyHitCache.get(id).has(localPath))
-        Reflect.set(o, key, value)
+        //Reflect.set(o, key, value)
+        o[key] = value
 
       // Clear our cache
       proxyHitCache.delete(id)
@@ -120,7 +177,8 @@ const proxy = (obj, rootArg, path=[]) => {
       const args = [root, 'delete', localPath, o[key], undefined]
 
       update(...args)
-      Reflect.deleteProperty(o, key)
+      //Reflect.deleteProperty(o, key)
+      delete o[key]
       return true // Indicate success
     },
   })
@@ -235,7 +293,7 @@ const SORT = {
   TRUNK_FIRST: Symbol('sort order: trunk → leaf'),
   LEAF_FIRST: Symbol('sort order: leaf → trunk'),
 }
-const getAllMatchingPaths = (obj, akmap, pathPrefix, sortOrder, listenerPathPrefix) => {
+const getAllMatchingPaths = (obj, akmap, pathPrefix, sortOrder, listenerPathPrefix, seenObjects) => {
   // Get all paths in the object that the given array-keyed-map also has paths
   // for.  The akmap is passed so that we can prune the search, and avoid
   // listing path branches we don't even have a subscriber for.
@@ -244,15 +302,33 @@ const getAllMatchingPaths = (obj, akmap, pathPrefix, sortOrder, listenerPathPref
   // it may be necessary to generalise and return multiple listener paths for
   // each property path.
 
+  // In order to detect cyclical references, we track what objects we've seen
+  // already in this path.  This way we can exit out early if we see one again;
+  // following it would lead us to loop infinitely.
+  seenObjects = seenObjects || []
+
   // On initial call, fully generalise the property path we've gotten, and
   // return a join of all recursive calls with every possible interpretation.
   if (!listenerPathPrefix) {
     const listenerPathPrefixes = generalisePath(pathPrefix, sortOrder)
     return listenerPathPrefixes.reduce((prev, next) => {
       return prev.concat(
-        getAllMatchingPaths(obj, akmap, pathPrefix, sortOrder, next))
+        getAllMatchingPaths(obj, akmap, pathPrefix, sortOrder, next, seenObjects))
     }, [])
   }
+
+  if (rootOfProxy.has(obj)) {
+    if (seenObjects.includes(obj)) {
+      return []
+    } else {
+      seenObjects = seenObjects.concat([obj])
+    }
+  }
+
+  debug({obj, akmap: Array.from(akmap.entries()),
+    pathPrefix, sortOrder, listenerPathPrefix,
+    hasPrefix: akmap.hasPrefix(listenerPathPrefix),
+    seenObjects})
 
   if (!akmap.hasPrefix(listenerPathPrefix)) {
     // We don't have any listeners with this prefix.  Exit early.
@@ -291,7 +367,8 @@ const getAllMatchingPaths = (obj, akmap, pathPrefix, sortOrder, listenerPathPref
             obj[key], akmap,
             pathPrefix.concat([key]),
             sortOrder,
-            listenerPath))
+            listenerPath,
+            seenObjects))
 
           if (isArrayIndex(key)) {
             // This is an array index.  Also explore the EACH branch.
@@ -302,7 +379,8 @@ const getAllMatchingPaths = (obj, akmap, pathPrefix, sortOrder, listenerPathPref
               obj[key], akmap,
               pathPrefix.concat([key]),
               sortOrder,
-              listenerPath))
+              listenerPath,
+              seenObjects))
           }
         }
       }
@@ -363,6 +441,28 @@ const getPath = (obj, path) => {
   }
 }
 
+const shallowUpdate = (root, action, path, oldValue, newValue) => {
+  // Call listeners for this path only, without trying to be clever and
+  // accounting for sub-properties and everything.  This should only be called
+  // in preference to the usual 'update' to avoid looping infinitely when it's
+  // known that the sub-properties would contain cyclic references, and their
+  // updating is already otherwise accounted for.
+
+  const sortOrder = action === 'set' ? SORT.TRUNK_FIRST : SORT.LEAF_FIRST
+  const pathListeners = listenersForRoot.get(root)
+
+  let listenerPaths = generalisePath(path)
+
+  let upid = updateId.get()
+  for (const listenerPath of listenerPaths) {
+    callListeners(root, action, listenerPath, path,
+      oldValue,
+      newValue,
+      upid)
+  }
+  updateId.revoke()
+}
+
 const update = (root, action, path, oldValue, newValue) => {
 
   const oldIsPrimitive = !isObjectOrArray(oldValue)
@@ -397,16 +497,36 @@ const update = (root, action, path, oldValue, newValue) => {
     // relevant path in the new object.
     const pathListeners = listenersForRoot.get(root)
 
-    const matchingPaths = getAllMatchingPaths(
-      newValue, pathListeners, path, SORT.TRUNK_FIRST)
     let upid = updateId.get()
-    for (const {listenerPath, propertyPath} of matchingPaths) {
-      const pathRelative = propertyPath.slice(path.length)
-      callListeners(root, action, listenerPath, propertyPath,
-        getPath(root, propertyPath),
-        getPath(newValue, pathRelative),
-        upid)
-    }
+
+    // Call listeners for changed property
+    ;(() => {
+      const matchingPaths = generalisePath(path, SORT.TRUNK_FIRST).map((x) => {
+        return { listenerPath: x, propertyPath: path }
+      })
+      for (const {listenerPath, propertyPath} of matchingPaths) {
+        callListeners(root, action, listenerPath, propertyPath,
+          oldValue,
+          newValue,
+          upid)
+      }
+    })()
+
+    // Call listeners for properties within that new object
+    ;(() => {
+      for (const k of Object.keys(newValue)) {
+        const matchingPaths = getAllMatchingPaths(
+          newValue[k], pathListeners, path.concat([k]), SORT.TRUNK_FIRST)
+        for (const {listenerPath, propertyPath} of matchingPaths) {
+          const pathRelative = propertyPath.slice(path.length)
+          callListeners(root, 'create', listenerPath, propertyPath,
+            getPath(root, propertyPath),
+            getPath(newValue, pathRelative),
+            upid)
+        }
+      }
+    })()
+
     updateId.revoke()
 
   } else if (!oldIsPrimitive && newIsPrimitive) {
@@ -416,15 +536,35 @@ const update = (root, action, path, oldValue, newValue) => {
     // every relevant path in the old object.
     const pathListeners = listenersForRoot.get(root)
 
-    const matchingPaths = getAllMatchingPaths(
-      oldValue, pathListeners, path, SORT.LEAF_FIRST)
     let upid = updateId.get()
-    for (const {listenerPath, propertyPath} of matchingPaths) {
-      callListeners(root, 'delete', listenerPath, propertyPath,
-        getPath(root, propertyPath),
-        undefined,
-        upid)
-    }
+
+    // Call listeners for now-deleted properties
+    ;(() => {
+      for (const k of Object.keys(oldValue)) {
+        const matchingPaths = getAllMatchingPaths(
+          oldValue[k], pathListeners, path.concat([k]), SORT.LEAF_FIRST)
+        for (const {listenerPath, propertyPath} of matchingPaths) {
+          callListeners(root, 'delete', listenerPath, propertyPath,
+            getPath(root, propertyPath),
+            undefined,
+            upid)
+        }
+      }
+    })()
+
+    // Call listeners for changed property
+    ;(() => {
+      const matchingPaths = generalisePath(path, SORT.TRUNK_FIRST).map((x) => {
+        return { listenerPath: x, propertyPath: path }
+      })
+      for (const {listenerPath, propertyPath} of matchingPaths) {
+        callListeners(root, action, listenerPath, propertyPath,
+          oldValue,
+          newValue,
+          upid)
+      }
+    })()
+
     updateId.revoke()
 
   } else {
@@ -613,6 +753,31 @@ const removeByValue = (arr, val) => {
   const index = arr.indexOf(val)
   if (index < 0) return
   arr.splice(index, 1)
+}
+
+const allPrefixes = (arr) => {
+  const prefixes = []
+  for (let i = 0; i < arr.length; ++i) {
+    prefixes.push(arr.slice(0, i))
+  }
+  return prefixes
+}
+
+const visitProperties = (obj, callback, path=[]) => {
+  // Recursively visit properties of 'obj', calling the callback for each and
+  // letting itdecide with its return value whether to continue 'true' or prune
+  // that branch 'false'.
+  let mayContinue
+  mayContinue = callback(path, obj)
+  if (mayContinue) {
+    for (let key of Object.keys(obj)) {
+      const pathHere = path.concat([key])
+      mayContinue = callback(pathHere, obj[key])
+      if (mayContinue && isObjectOrArray(obj[key])) {
+        visitProperties(obj[key], callback, pathHere)
+      }
+    }
+  }
 }
 
 const isObjectOrArray = (x) => x instanceof Object

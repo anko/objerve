@@ -314,11 +314,13 @@ test('adding listener for same level relative path inside listener', (t) => {
   callArgsEqual(t, callsBefore, [
     [undefined, 1, 'delete', ['a', 'before'], obj],
   ])
-  // For creation, the obj.a.after listener wasn't called, because it only came
-  // into existence when obj.a = {...} fired obj.a.main's listener.  For
-  // deletion, obj.a.after's listener also wasn't called, because obj.a.main's
+  // For creation, the obj.a.after listener was called, because it was part of
+  // the same update as what fired obj.a.main's listener that created it.  For
+  // deletion, obj.a.after's listener wasn't called, because obj.a.main's
   // listener was called first, which removed it.
-  callArgsEqual(t, callsAfter, [])
+  callArgsEqual(t, callsAfter, [
+    [3, undefined, 'create', ['a', 'after'], obj],
+  ])
   t.end()
 })
 
@@ -645,26 +647,37 @@ test('addListener to subproperty', (t) => {
 test('circular reference', (t) => {
   const obj = objerve()
   const {calls, f} = callLog()
+  objerve.addListener(obj, ['x'], f)
   obj.a = obj
-  objerve.addListener(obj.a.a.a.a.a.a.a.a.a, ['a'], f)
-  obj.a = obj
+  obj.a.a.a.a.x = 1
 
   callArgsEqual(t, calls, [
-    [obj, obj, 'change', ['a'], obj],
+    [1, undefined, 'create', ['x'], obj],
   ])
   t.end()
 })
 
 test('circular reference over 2 objerve instances', (t) => {
-  const obj1 = objerve()
-  const obj2 = objerve()
+  const obj1 = objerve({n: 1})
+  const obj2 = objerve({n: 2})
   const {calls, f} = callLog()
-  obj1.a = obj2
-  objerve.addListener(obj1.a, ['b'], f)
-  obj2.b = obj1
+  objerve.addListener(obj1, ['refTo2'], f)
+  objerve.addListener(obj1, ['x'], f)
+  objerve.addListener(obj2, ['refTo1'], f)
+
+  obj1.refTo2 = obj2
+  obj2.refTo1 = obj1
+  obj1.x = 1
+
+  obj1.refTo2 = 42
+  obj2.refTo1 = 69
 
   callArgsEqual(t, calls, [
-    [obj1, undefined, 'create', ['b'], obj2],
+    [obj2, undefined, 'create', ['refTo2'], obj1],
+    [obj1, undefined, 'create', ['refTo1'], obj2],
+    [1, undefined, 'create', ['x'], obj1],
+    [42, obj2, 'change', ['refTo2'], obj1],
+    [69, obj1, 'change', ['refTo1'], obj2],
   ])
   t.end()
 })
