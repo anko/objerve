@@ -1,4 +1,4 @@
-# objerve
+# objerve [![](https://img.shields.io/npm/v/objerve.svg?style=flat-square)](https://www.npmjs.com/package/objerve) [![](https://img.shields.io/travis/anko/objerve.svg?style=flat-square)](https://travis-ci.org/anko/objerve) [![](https://img.shields.io/coveralls/github/anko/objerve?style=flat-square)](https://coveralls.io/github/anko/objerve) [![](https://img.shields.io/david/anko/objerve?style=flat-square)](https://david-dm.org/anko/objerve)
 
 Define callbacks that get fired when given object properties change.
 
