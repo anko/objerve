@@ -30,7 +30,7 @@ obj.a = null
 > delete a.b: "hello" -> undefined
 > ```
 
-# features
+## features
 
  - Behaves exactly like an ordinary Object
  - Can listen to fixed paths or to all paths with a prefix, and use
@@ -47,9 +47,9 @@ obj.a = null
  - Stores listeners in a prefix tree by target path, to speed up queries with
    large objects and many listeners.
 
-# api
+## api
 
-## `objerve([obj])`
+### `objerve([obj])`
 
 Wrap the given object (or if none given, `{}`) so it can be subscribed to.
 
@@ -57,7 +57,7 @@ The resulting object behaves like the object did before, but changes to its
 paths can be listened to with `objerve.addListener` or
 `objerve.addPrefixListener`.
 
-## `objerve.addListener(obj, path, callback)`
+### `objerve.addListener(obj, path, callback)`
 
 The path can contain `objerve.each`, which will match any Array index at that
 position.
@@ -66,7 +66,7 @@ Works inside listener callbacks.  If inside a listener you add a new listener
 that matches the same path, the new listener will also be called with this same
 change.
 
-## `objerve.removeListener(obj, path, callback)`
+### `objerve.removeListener(obj, path, callback)`
 
 Remove the listener from the given path, so the callback is no longer called.
 The path is useful to disambiguate in case the same callback function is being
@@ -78,23 +78,23 @@ Works inside listener callbacks.  If you remove a listener for the same path
 inside a callback for that path, the removed listener won't be called for that
 change either (unless it was already called before this one).
 
-## `objerve.addPrefixListener(obj, path, callback)`
+### `objerve.addPrefixListener(obj, path, callback)`
 
 Same as `addListener`, but will be called for any property at all that has the
 given `path` as a prefix.  Pass `[]` for the path to be called for every change
 to any property.
 
-## `objerve.removePrefixListener(obj, path, callback)`
+### `objerve.removePrefixListener(obj, path, callback)`
 
 Same as `removeListener`, but for prefix listeners.
 
-## `objerve.each`
+### `objerve.each`
 
 A special Symbol value that can be passed as part of a path to listen to.  It
 matches any valid array index, i.e. `0`, `1`, `999999999` etc, so your listener
 is called for every element of an array being created, changed, or deleted.
 
-# how callbacks are called
+## how callbacks are called
 
 Your callback function is called immediately before the described change is
 actually applied to the object, with these arguments:
@@ -260,7 +260,7 @@ states between:
 
 </details>
 
-# call order
+## call order
 
 When one change triggers multiple callbacks, the order they are called depends
 on whether the change is constructive or destructive:   If the property is
@@ -351,13 +351,13 @@ called in insertion order.
 Other than the above rules, the relative order in which any two paths'
 callbacks are called may be arbitrary, so you shouldn't rely on it.
 
-# use-cases
+## use-cases
 
  - Binding data to UI.
  - Testing.  Transparently adding logging to property changes is handy.
  - Reactive programming.
 
-# license
+## license
 
 [ISC](LICENSE); summary: use for anything, credit me, no warranty
 
