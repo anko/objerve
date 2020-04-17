@@ -4,7 +4,9 @@
   "description": "define callbacks listening for value changes inside given object paths",
   "main": "main.js",
   "scripts": {
-    "test": "node test.js"
+    "test": "node test.js",
+    "test-with-coverage": "nyc npm test",
+    "upload-coverage-report": "nyc report --reporter=text-lcov | coveralls"
   },
   "author": "Antti K <an@cyan.io>",
   "license": "ISC",
@@ -13,6 +15,8 @@
     "deep-object-diff": "^1.1.0"
   },
   "devDependencies": {
+    "coveralls": "^3.0.11",
+    "nyc": "^15.0.1",
     "tape": "^4.13.2"
   }
 }

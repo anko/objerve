@@ -791,6 +791,8 @@ const DEBUG = (() => {
     stderr: process.stderr,
     inspectOptions: {depth: null},
   })
+
+  /* istanbul ignore next */
   return (type, ...values) => {
     if (activeDebugTypes.has(type)) {
       // Using ANSI colours to make the debug header easier to notice
