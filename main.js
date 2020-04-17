@@ -1,36 +1,29 @@
-const akm = require('array-keyed-map')
+const arrayKeyedMap = require('array-keyed-map')
 const deepObjectDiff = require('deep-object-diff').detailedDiff
-
-const debug = () => {}
-debug['active'] = (x) => console.dir(x, {depth: null})
-
-const DEBUG_UPDATE_STRATEGY = false
-const DEBUG_UPDATE_ID = false
-const DEBUG_SUB_ROOT = false
+const consoleModule = require('console')
 
 const rootOfProxy = new WeakMap()
 const pathOfProxy = new WeakMap()
 
 const proxy = (obj, rootArg, path=[]) => {
   // Primitive values can't have properties, so need no wrapper.
-  if (!isObjectOrArray(obj)) return obj
+  if (!isObject(obj)) return obj
 
-  // If the value is a proxy, subscribe to changes on that object, and call
-  // appropriately edited updates on us when paths on it change.  Also
-  // subscribe to this property on ourselves, so if it changes to point to some
-  // other value, we clean up both listeners.
+  // If the value is itself a proxy, subscribe to changes on that object, and
+  // call appropriately edited updates on us when paths on it change.  Also
+  // subscribe to this property on ourselves, so we can clean up both listeners
+  // if our property changes.
   if (rootOfProxy.has(obj)) {
 
     // If this is a reference to ourselves, just return it.  It's equivalent.
     if (rootOfProxy.get(obj) === rootArg) return obj
 
-    const prefixesToIgnore = akm()
+    const prefixesToIgnore = arrayKeyedMap()
     const subRoot = rootOfProxy.get(obj)
     const subPath = pathOfProxy.get(obj)
     const prefixListener = (newValue, oldValue, action, changePath, obj) => {
       changePath = changePath.slice(subPath.length)
-      if (DEBUG_SUB_ROOT)
-        console.log('sub-root changed', {subRoot, changePath})
+      DEBUG('sub-root', 'changed', {subRoot, changePath})
       let doFullUpdate = true
 
       // If the subRoot we're observing at this path has a reference to us, we
@@ -38,16 +31,14 @@ const proxy = (obj, rootArg, path=[]) => {
       // to something else.  If we didn't do this, we'd risk looping
       // infinitely:  We have a reference to them, and they to us.
       if (rootOfProxy.get(newValue) === rootArg) {
-        if (DEBUG_SUB_ROOT)
-          console.log('adding to ignore list', {subRoot, changePath})
+        DEBUG('sub-root', 'adding to ignore list', {subRoot, changePath})
         prefixesToIgnore.set(changePath, true)
         doFullUpdate = false
       } else if (prefixesToIgnore.has(changePath)) {
-        if (DEBUG_SUB_ROOT) console.log('ignoring', {subRoot, changePath})
+        DEBUG('sub-root', 'ignoring', {subRoot, changePath})
         // If it has changed to a new value, stop ignoring it
         if (rootOfProxy.get(newValue) !== rootArg) {
-          if (DEBUG_SUB_ROOT)
-            console.log('removing from ignore list', {subRoot, changePath})
+          DEBUG('sub-root', 'removing from ignore list', {subRoot, changePath})
           prefixesToIgnore.delete(changePath)
         } else {
           // Might have changed to another thing that is a reference to us.
@@ -70,29 +61,25 @@ const proxy = (obj, rootArg, path=[]) => {
         shallowUpdate(rootArg, action, finalPath, oldValue, newValue)
       }
     }
-    if (DEBUG_SUB_ROOT)
-      console.log('prefix-listening', {subRoot})
+    DEBUG('sub-root', 'prefix-listening to', {subRoot})
     addPrefixListener(subRoot, [], prefixListener)
 
     const propertyListener = (newValue, oldValue, action, path, _) => {
       if (newValue !== obj) {
-        if (DEBUG_SUB_ROOT)
-          console.log('own path changed; unlistening', {path})
+        DEBUG('sub-root', 'own path changed; unlistening', {path})
         removeListener(rootArg, path, propertyListener)
         removePrefixListener(subRoot, [], prefixListener)
       }
     }
+    DEBUG('sub-root', 'listening to own path', {path})
     addListener(rootArg, path, propertyListener)
-    if (DEBUG_SUB_ROOT)
-      console.log('listening to own path', {path})
 
-    // In case the object already has properties that are pointing to us,
-    // iterate through it to add them to the ignore list already.
+    // Iterate through the object in case it already has properties that are
+    // references to us, so we can pre-emptively add those to the ignore list.
     visitProperties(obj, (path, val) => {
       if (rootOfProxy.get(val) === rootArg) {
         prefixesToIgnore.set(path, true)
-        if (DEBUG_SUB_ROOT)
-          console.log(rootArg, ': pre-adding to ignore list', {obj, path})
+        DEBUG('sub-root', rootArg, ': pre-adding to ignore list', {obj, path})
         return false
       } else return true
     })
@@ -137,7 +124,7 @@ const proxy = (obj, rootArg, path=[]) => {
 
     // Make our own cache entry to track modified paths
     const id = nextId++
-    proxyHitCache.set(id, akm())
+    proxyHitCache.set(id, arrayKeyedMap())
 
     // Call update (which possibly runs user callbacks)
     update(...args)
@@ -207,7 +194,7 @@ const proxy = (obj, rootArg, path=[]) => {
 const proxyBase = (template={}) => {
   if (rootOfProxy.has(template)) return template
   const p = proxy(template)
-  listenersForRoot.set(p, akm())
+  listenersForRoot.set(p, arrayKeyedMap())
   return p
 }
 
@@ -225,9 +212,8 @@ const updateId = (() => {
   const get = () => {
     if (ongoingUpdateId === null) {
       ongoingUpdateId = nextUpdateId++
-      if (DEBUG_UPDATE_ID) console.log(`NEW update id ${ongoingUpdateId}`)
-    }
-    if (DEBUG_UPDATE_ID) console.log(`Update id ${ongoingUpdateId}`)
+      DEBUG('update id', `${ongoingUpdateId} (NEW)`)
+    } else DEBUG('update id', `${ongoingUpdateId}`)
     return ongoingUpdateId
   }
 
@@ -252,7 +238,6 @@ const callListeners = (root, action,
 
   const pathListeners = listenersForRoot.get(root)
   if (pathListeners.has(listenerPath)) {
-    debug({root, action, listenerPath, propertyPath, oldValue, newValue, upid})
     for (const listener of pathListeners.get(listenerPath)) {
       listener(newValue, oldValue, action, propertyPath, root, upid)
     }
@@ -283,16 +268,13 @@ const shallowUpdate = (root, action, path, oldValue, newValue) => {
 
 const update = (root, action, path, oldValue, newValue) => {
 
-  const oldIsPrimitive = !isObjectOrArray(oldValue)
-  const newIsPrimitive = !isObjectOrArray(newValue)
+  const oldIsPrimitive = !isObject(oldValue)
+  const newIsPrimitive = !isObject(newValue)
 
   const sortOrder = action === 'set' ? SORT.TRUNK_FIRST : SORT.LEAF_FIRST
 
-  debug({root, action, path, oldValue, newValue})
-
   if (oldIsPrimitive && newIsPrimitive) {
-    if (DEBUG_UPDATE_STRATEGY)
-      console.log([ path, oldValue, "primitive -> primitive", newValue])
+    DEBUG('update strategy', path, oldValue, "primitive -> primitive", newValue)
     // Both primitives.  Just call the listener for this path.
     const pathListeners = listenersForRoot.get(root)
 
@@ -309,8 +291,7 @@ const update = (root, action, path, oldValue, newValue) => {
     updateId.revoke()
 
   } else if (oldIsPrimitive && !newIsPrimitive) {
-    if (DEBUG_UPDATE_STRATEGY)
-      console.log([ path, oldValue, "primitive -> object", newValue])
+    DEBUG('update strategy', path, oldValue, "primitive -> object", newValue)
     // Primitive being overwritten with an Object.  Call listeners for every
     // relevant path in the new object.
     const pathListeners = listenersForRoot.get(root)
@@ -348,8 +329,7 @@ const update = (root, action, path, oldValue, newValue) => {
     updateId.revoke()
 
   } else if (!oldIsPrimitive && newIsPrimitive) {
-    if (DEBUG_UPDATE_STRATEGY)
-      console.log([ path, oldValue, "object -> primitive", newValue])
+    DEBUG('update strategy', path, oldValue, "object -> primitive", newValue)
     // Object being overwritten with a primitive value.  Call listeners for
     // every relevant path in the old object.
     const pathListeners = listenersForRoot.get(root)
@@ -386,8 +366,7 @@ const update = (root, action, path, oldValue, newValue) => {
     updateId.revoke()
 
   } else {
-    if (DEBUG_UPDATE_STRATEGY)
-      console.log([ path, oldValue, "object -> object", newValue])
+    DEBUG('update strategy', path, oldValue, "object -> object", newValue)
     const pathListeners = listenersForRoot.get(root)
 
     let upid = updateId.get()
@@ -609,7 +588,7 @@ const getAllMatchingPaths = (obj, akmap, pathPrefix, sortOrder, listenerPathPref
     }
   }
 
-  debug({obj, akmap: Array.from(akmap.entries()),
+  DEBUG('matching paths', {obj, akmap: Array.from(akmap.entries()),
     pathPrefix, sortOrder, listenerPathPrefix,
     hasPrefix: akmap.hasPrefix(listenerPathPrefix),
     seenObjects})
@@ -634,7 +613,7 @@ const getAllMatchingPaths = (obj, akmap, pathPrefix, sortOrder, listenerPathPref
     }
 
     const visitLeaves = () => {
-      if (isObjectOrArray(obj)) {
+      if (isObject(obj)) {
         for (const key of Object.getOwnPropertyNames(obj)) {
 
           // When calling recursively for children, extend the
@@ -689,9 +668,8 @@ const getAllMatchingPaths = (obj, akmap, pathPrefix, sortOrder, listenerPathPref
 
 const last = (arr) => arr[arr.length - 1]
 
-
 const hasPath = (obj, path) => {
-  if (!isObjectOrArray(obj)) return false
+  if (!isObject(obj)) return false
   switch (path.length) {
     case 0:
       return true
@@ -726,8 +704,8 @@ const getPath = (obj, path) => {
 }
 
 const diffObjects = (oldValue, newValue) => {
-  oldValue = isObjectOrArray(oldValue) ? oldValue : {}
-  newValue = isObjectOrArray(newValue) ? newValue : {}
+  oldValue = isObject(oldValue) ? oldValue : {}
+  newValue = isObject(newValue) ? newValue : {}
 
   const {added, deleted, updated} = deepObjectDiff(oldValue, newValue)
 
@@ -760,7 +738,7 @@ const diffObjects = (oldValue, newValue) => {
 }
 
 const existsAndHasProperty = (x, key) => {
-  return isObjectOrArray(x) && (key in x)
+  return isObject(x) && (key in x)
 }
 
 const removeByValue = (arr, val) => {
@@ -787,16 +765,43 @@ const visitProperties = (obj, callback, path=[]) => {
     for (let key of Object.getOwnPropertyNames(obj)) {
       const pathHere = path.concat([key])
       mayContinue = callback(pathHere, obj[key])
-      if (mayContinue && isObjectOrArray(obj[key])) {
+      if (mayContinue && isObject(obj[key])) {
         visitProperties(obj[key], callback, pathHere)
       }
     }
   }
 }
 
-const isObjectOrArray = (x) => x instanceof Object
+const isObject = (x) => x instanceof Object
 
 const isArrayIndex = (x) => x.match(/^[0-9]+$/) ? true : false
+
+const DEBUG = (() => {
+  // Uncomment a string here to enable that type of debug logging
+  const activeDebugTypes = new Set([
+    // 'update strategy',
+    // 'update id',
+    // 'sub-root',
+    // 'matching paths',
+  ])
+  // Same as regular console, but always log full depth.  Default console.log
+  // will annoyingly truncate at some point.
+  const debugConsole = new console.Console({
+    stdout: process.stdout,
+    stderr: process.stderr,
+    inspectOptions: {depth: null},
+  })
+  return (type, ...values) => {
+    if (activeDebugTypes.has(type)) {
+      // Using ANSI colours to make the debug header easier to notice
+      const reverse = process.stdout.isTTY ? '\x1b[7m' : ''
+      const magenta = process.stdout.isTTY ? '\x1b[35m' : ''
+      const reset = process.stdout.isTTY ? '\x1b[0m' : ''
+      debugConsole.log(`${magenta}${reverse}DEBUG${reset} `
+        + `${magenta}${type}${reset}:`, ...values)
+    }
+  }
+})()
 
 module.exports = proxyBase
 proxyBase.addListener = addListener
