@@ -961,3 +961,25 @@ test('wrapping existing objerve instance returns existing one', (t) => {
   t.deepEqual(calls2, calls1) // same ids and everything
   t.end()
 })
+
+test('objerve-wrapped function remains callable', (t) => {
+  const obj = objerve((x) => x + 1)
+  const {calls, f} = callLog()
+  objerve.addListener(obj, ['x'], f)
+
+  // Can still call it as a function
+  t.deepEquals(obj(1), 2)
+  t.deepEquals(obj(2), 3)
+
+  // Also can have properties observed
+  obj.x = 123
+  obj.x = undefined
+  delete obj.x
+
+  callArgsEqual(t, calls, [
+    [123, undefined, 'create', ['x']],
+    [undefined, 123, 'change', ['x']],
+    [undefined, undefined, 'delete', ['x']],
+  ])
+  t.end()
+})
