@@ -2,7 +2,7 @@
 
 Define callbacks that get fired when given object properties change.
 
-# example
+## example
 
 <!-- !test program node -->
 
@@ -51,7 +51,7 @@ obj.a = null
 
 ### `objerve([obj])`
 
-Wrap the given object (or if none given, `{}`) so it can be subscribed to.
+Wrap the given object (default `{}`) so it can be subscribed to.
 
 The resulting object behaves like the object did before, but changes to its
 paths can be listened to with `objerve.addListener` or
