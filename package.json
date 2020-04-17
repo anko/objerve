@@ -6,7 +6,7 @@
   "scripts": {
     "test": "node test.js"
   },
-  "author": "Antti Korpi <an@cyan.io> (https://cyan.io)",
+  "author": "Antti K <an@cyan.io>",
   "license": "ISC",
   "dependencies": {
     "array-keyed-map": "^1.4.0",

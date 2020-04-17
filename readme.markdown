@@ -357,6 +357,10 @@ callbacks are called may be arbitrary, so you shouldn't rely on it.
  - Testing.  Transparently adding logging to property changes is handy.
  - Reactive programming.
 
+# license
+
+[ISC](LICENSE); summary: use for anything, credit me, no warranty
+
 [setImmediate]: https://developer.mozilla.org/en-US/docs/Web/API/Window/setImmediate
 [processNextTick]: https://nodejs.org/api/process.html#process_process_nexttick_callback_args
 [queueMicrotask]: https://developer.mozilla.org/en-US/docs/Web/API/WindowOrWorkerGlobalScope/queueMicrotask
