@@ -2,6 +2,8 @@
 
 Define callbacks that get fired when given object properties change.
 
+![picture](https://user-images.githubusercontent.com/5231746/79608887-06a4df80-80f6-11ea-9476-b1e87e9efc38.png)
+
 ## example
 
 <!-- !test program node -->
