@@ -213,7 +213,7 @@ about the final results at the end of this event loop tick, so you may wish to
 accumulate the changes and defer your rendering with an API appropriate for
 your use-case (such as [`setImmediate`][setImmediate],
 [`process.nextTick`][processNextTick], [`queueMicrotask`][queueMicrotask],
-`requestAnimationFrame`][requestAnimationFrame], etc).
+[`requestAnimationFrame`][requestAnimationFrame], etc).
 
 <details><summary>Example: Accumulating changes and deferring rendering using <code>process.nextTick</code></summary>
 
