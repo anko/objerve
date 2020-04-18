@@ -1,6 +1,5 @@
 const arrayKeyedMap = require('array-keyed-map')
 const deepObjectDiff = require('deep-object-diff').detailedDiff
-const consoleModule = require('console')
 
 const rootOfProxy = new WeakMap()
 const pathOfProxy = new WeakMap()
