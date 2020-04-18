@@ -783,21 +783,34 @@ const DEBUG = (() => {
     // 'sub-root',
     // 'matching paths',
   ])
-  // Same as regular console, but always log full depth.  Default console.log
-  // will annoyingly truncate at some point.
-  const debugConsole = new console.Console({
-    stdout: process.stdout,
-    stderr: process.stderr,
-    inspectOptions: {depth: null},
-  })
+
+  const runningInNodejs =
+    process && process.versions && process.versions.node
+  let reverse = ''
+  let magenta = ''
+  let reset = ''
+  let debugConsole = console
+  if (runningInNodejs) {
+    // We have Node.js APIs; can log with colours and stuff.
+
+    // Same as regular console, but always log full depth.  Default console.log
+    // will annoyingly truncate at some point.
+    debugConsole = new console.Console({
+      stdout: process.stdout,
+      stderr: process.stderr,
+      inspectOptions: {depth: null},
+    })
+    // ANSI colours
+    if (process.stdout.isTTY) {
+      reverse = '\x1b[7m'
+      magenta = '\x1b[35m'
+      reset = '\x1b[0m'
+    }
+  }
 
   /* istanbul ignore next */
   return (type, ...values) => {
     if (activeDebugTypes.has(type)) {
-      // Using ANSI colours to make the debug header easier to notice
-      const reverse = process.stdout.isTTY ? '\x1b[7m' : ''
-      const magenta = process.stdout.isTTY ? '\x1b[35m' : ''
-      const reset = process.stdout.isTTY ? '\x1b[0m' : ''
       debugConsole.log(`${magenta}${reverse}DEBUG${reset} `
         + `${magenta}${type}${reset}:`, ...values)
     }
