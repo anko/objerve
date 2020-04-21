@@ -223,10 +223,10 @@ your use-case (such as [`setImmediate`][setImmediate],
 
 ```js
 const objerve = require('./main.js')
-const arrayKeyedMap = require('array-keyed-map')
+const ArrayKeyedMap = require('array-keyed-map')
 
 const obj = objerve()
-const accumulatedChanges = arrayKeyedMap()
+const accumulatedChanges = new ArrayKeyedMap()
 
 const render = () => {
   // Put your expensive UI rendering code here
