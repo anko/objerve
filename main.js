@@ -1,4 +1,4 @@
-const arrayKeyedMap = require('array-keyed-map')
+const ArrayKeyedMap = require('array-keyed-map')
 const deepObjectDiff = require('deep-object-diff').detailedDiff
 
 const rootOfProxy = new WeakMap()
@@ -17,7 +17,7 @@ const proxy = (obj, rootArg, path=[]) => {
     // If this is a reference to ourselves, just return it.  It's equivalent.
     if (rootOfProxy.get(obj) === rootArg) return obj
 
-    const prefixesToIgnore = arrayKeyedMap()
+    const prefixesToIgnore = new ArrayKeyedMap()
     const subRoot = rootOfProxy.get(obj)
     const subPath = pathOfProxy.get(obj)
     const prefixListener = (newValue, oldValue, action, changePath, obj) => {
@@ -123,7 +123,7 @@ const proxy = (obj, rootArg, path=[]) => {
 
     // Make our own cache entry to track modified paths
     const id = nextId++
-    proxyHitCache.set(id, arrayKeyedMap())
+    proxyHitCache.set(id, new ArrayKeyedMap())
 
     // Call update (which possibly runs user callbacks)
     update(...args)
@@ -193,7 +193,7 @@ const proxy = (obj, rootArg, path=[]) => {
 const proxyBase = (template={}) => {
   if (rootOfProxy.has(template)) return template
   const p = proxy(template)
-  listenersForRoot.set(p, arrayKeyedMap())
+  listenersForRoot.set(p, new ArrayKeyedMap())
   return p
 }
 

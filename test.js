@@ -1,6 +1,6 @@
 const objerve = require('./' + require('./package.json').main)
 const test = require('tape')
-const akm = require('array-keyed-map')
+const ArrayKeyedMap = require('array-keyed-map')
 
 const callLog = (userF) => {
   const calls = []
@@ -879,7 +879,7 @@ test('recursive callback across instances', (t) => {
 test('technique: accumulate changes, defer reaction to next tick', (t) => {
   const obj = objerve()
 
-  const changes = akm()
+  const changes = new ArrayKeyedMap()
   const {calls, f} = callLog((newVal, oldVal, action, path) => {
     // On first time this callback is called this tick, set up a nextTick to
     // handle the total results.

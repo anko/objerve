@@ -12,7 +12,7 @@
   "author": "Antti K <an@cyan.io>",
   "license": "ISC",
   "dependencies": {
-    "array-keyed-map": "^1.4.0",
+    "array-keyed-map": "^2.0.0",
     "deep-object-diff": "^1.1.0"
   },
   "devDependencies": {
