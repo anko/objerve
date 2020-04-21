@@ -108,7 +108,7 @@ actually applied to the object, with these arguments:
    - `'change'` if the property exists, and its value is changing
    - `'delete'` if the property exists, but it is being deleted
 
-   <details><summary>Example:  Using the <code>action></code> argument to distinguish property deletion from being set to <code>undefined</code></summary>
+   <p></p><details><summary>Example:  Using the <code>action></code> argument to distinguish property deletion from being set to <code>undefined</code></summary>
 
    <!-- !test in using change argument -->
 
