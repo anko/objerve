@@ -266,9 +266,8 @@ states between:
 
 When one change triggers multiple callbacks, the order they are called depends
 on whether the change is constructive or destructive:   If the property is
-being created or changed, callbacks are called in root→leaf bottom-up order.
-If the property is being deleted, callbacks are called in leaf→root top-down
-order.
+being created or changed, callbacks are called in root→leaf order.  If the
+property is being deleted, callbacks are called in leaf→root order.
 
 Because of this feature, your listeners can setup or teardown state (e.g.
 managing DOM elements) in response to creation or deletion, and sub-properties
