@@ -1,6 +1,6 @@
 {
   "name": "objerve",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "define callbacks listening for value changes inside given object paths",
   "main": "main.js",
   "scripts": {
