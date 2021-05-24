@@ -12,13 +12,13 @@
   "author": "Antti K <an@cyan.io>",
   "license": "ISC",
   "dependencies": {
-    "array-keyed-map": "^2.1.0",
+    "array-keyed-map": "^2.1.1",
     "deep-object-diff": "^1.1.0"
   },
   "devDependencies": {
-    "coveralls": "^3.1.0",
+    "coveralls": "^3.1.1",
     "nyc": "^15.1.0",
-    "tape": "^5.2.2",
-    "txm": "^7.4.5"
+    "tape": "^5.3.1",
+    "txm": "^7.4.6"
   }
 }
