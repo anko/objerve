@@ -4,10 +4,10 @@
   "description": "define callbacks listening for value changes inside given object paths",
   "main": "main.js",
   "scripts": {
-    "test": "node test.js",
+    "test": "npm run-script test-code && npm run-script test-docs",
+    "test-code": "node test.js",
     "test-docs": "txm readme.markdown",
-    "test-with-coverage": "nyc npm test",
-    "upload-coverage-report": "nyc report --reporter=text-lcov | coveralls"
+    "test-with-coverage": "c8 npm run-script test-code"
   },
   "author": "Antti K",
   "license": "ISC",
@@ -16,8 +16,8 @@
     "deep-object-diff": "^1.1.0"
   },
   "devDependencies": {
+    "c8": "^7.11.3",
     "coveralls": "^3.1.1",
-    "nyc": "^15.1.0",
     "tape": "^5.3.1",
     "txm": "^8.0.2"
   }
